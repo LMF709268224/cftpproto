@@ -1,0 +1,541 @@
+syntax = "proto3";
+
+package gcreds;
+
+option go_package = "cftp/gcreds";
+// 资格资料管理服务
+service CredentialService {
+  // --- 资格定义 (CredentialDefinition) ---
+  rpc CreateCredentialDefinition(CreateCredentialDefinitionRequest) returns (CredentialDefinitionSummary);
+  rpc GetCredentialDefinitionDetail(GetCredentialDefinitionDetailRequest) returns (CredentialDefinition);
+  rpc ListCredentialDefinitions(ListCredentialDefinitionsRequest) returns (ListCredentialDefinitionsResponse);
+
+  // --- 申请流程 (Application) ---
+  // 考生提交资料申请
+  rpc SubmitApplication(SubmitApplicationRequest) returns (ApplicationSummary);
+  // 考生更新资料申请 (只更新部分文件并重新进入待审核状态)
+  rpc UpdateApplication(UpdateApplicationRequest) returns (ApplicationSummary);
+  // 管理员审核申请 (审核通过会生成新的 Credential 版本)
+  rpc AuditApplication(AuditApplicationRequest) returns (ApplicationSummary);
+  // 获取单笔申请单的详细信息
+  rpc GetApplicationDetail(GetApplicationDetailRequest) returns (Application);
+  // 考生列举自己的申请结果
+  rpc ListCandidateApplications(ListApplicationsRequest) returns (ListApplicationsResponse);
+  // 考生列出自己已经持有的有效资格
+  rpc ListCandidateCredentials(ListCandidateCredentialsRequest) returns (ListCandidateCredentialsResponse);
+  // 考生列出自己可以申请的资格 (只列出具有申请权限的资格定义)
+  rpc ListCandidateEligibleDefinitions(ListCandidateEligibleDefinitionsRequest) returns (ListCandidateEligibleDefinitionsResponse);
+  // 分页及条件列出申请记录 (管理员用)
+  rpc ListApplications(ListApplicationsRequest) returns (ListApplicationsResponse);
+
+  // 打开考生某个资格类型的资料上传权限
+  rpc GrantUploadPermission(GrantUploadPermissionRequest) returns (UploadPermissionResponse);
+
+  // 关闭考生某个资格类型的资料上传权限
+  rpc RevokeUploadPermission(RevokeUploadPermissionRequest) returns (UploadPermissionResponse);
+
+  // 查询考生某个资格类型的资料上传权限
+  rpc CheckUploadPermission(CheckUploadPermissionRequest) returns (UploadPermissionResponse);
+
+  // 考生请求上传资料的 presigned URL
+  rpc RequestUploadUrl(RequestUploadUrlRequest) returns (RequestUploadUrlResponse);
+
+  // --- 档案管理 (Credential) ---
+  // 分页及条件列出资格档案 (管理员/开发用)
+  rpc ListCredentials(ListCredentialsRequest) returns (ListCredentialsResponse);
+  // 获取资格的特定版本详情 (根据 cred_id 直接获取)
+  rpc GetCredentialDetail(GetCredentialDetailRequest) returns (Credential);
+  // 获取考生当前的最新资格状态
+  rpc GetLatestCredential(GetLatestCredentialRequest) returns (CredentialSummary);
+  // 快速检查考生是否持有某项有效资格
+  rpc CheckCandidateQualification(CheckCandidateQualificationRequest) returns (CheckCandidateQualificationResponse);
+  // 获取资格的特定版本快照
+  rpc GetCredentialVersion(GetCredentialVersionRequest) returns (CredentialSummary);
+  
+  // --- 运维与干预 ---
+  // 管理员手动标记资格过期 (生成新的 Expired 版本)
+  rpc MarkExpired(MarkExpiredRequest) returns (CredentialSummary);
+  // 管理员撤销资格 (生成新的 Revoked 版本)
+  rpc RevokeCredential(RevokeCredentialRequest) returns (CredentialSummary);
+
+  // --- PDF 证书模板管理 (PdfTemplate) ---
+  rpc CreatePdfTemplate(CreatePdfTemplateRequest) returns (PdfTemplateSummary);
+  rpc UpdatePdfTemplate(UpdatePdfTemplateRequest) returns (PdfTemplateSummary);
+  rpc GetPdfTemplate(GetPdfTemplateRequest) returns (PdfTemplateSummary);
+  rpc GetPdfTemplateDetail(GetPdfTemplateRequest) returns (PdfTemplateDetail);
+  rpc ListPdfTemplates(ListPdfTemplatesRequest) returns (ListPdfTemplatesResponse);
+
+  // --- PDF 证书生成请求 (PdfRequest) ---
+  rpc CreatePdfRequest(CreatePdfRequestRequest) returns (PdfRequestSummary);
+  rpc UpdatePdfRequest(UpdatePdfRequestRequest) returns (PdfRequestSummary);
+  rpc GetPdfRequest(GetPdfRequestRequest) returns (PdfRequestSummary);
+  rpc GetPdfRequestDetail(GetPdfRequestRequest) returns (PdfRequest);
+  rpc GetPdfCertificate(GetPdfCertificateRequest) returns (GetPdfCertificateResponse);
+  rpc ListPdfRequests(ListPdfRequestsRequest) returns (ListPdfRequestsResponse);
+
+  // --- 资源存在性批量校验 (CheckResourcesExist) ---
+  rpc CheckResourcesExist(CheckResourcesExistRequest) returns (CheckResourcesExistResponse);
+
+  rpc AdminPurgeCandidateCredentials(AdminPurgeCandidateCredentialsRequest) returns (AdminPurgeCandidateCredentialsResponse);
+}
+
+// --- 基础数据模型 ---
+
+enum CredentialStatus {
+  CREDENTIAL_STATUS_UNSPECIFIED = 0;
+  CREDENTIAL_STATUS_ACTIVE = 1;
+  CREDENTIAL_STATUS_REVOKED = 2;
+  CREDENTIAL_STATUS_EXPIRED = 3;
+}
+
+enum CredentialFileType {
+  CREDENTIAL_FILE_TYPE_UNSPECIFIED = 0;
+  CREDENTIAL_FILE_TYPE_IMAGE = 1;
+  CREDENTIAL_FILE_TYPE_PDF = 2;
+  CREDENTIAL_FILE_TYPE_VIDEO = 4;
+  CREDENTIAL_FILE_TYPE_TEXT = 8;
+}
+
+message CredentialFileConstraint {
+  string name = 1;          // 文件名称 [required]
+  CredentialFileType type = 2; // 文件类型 [required]
+  bool is_required = 3;       // 是否必填 [required]
+}
+
+message CredentialDefinition {
+  string cred_def_id = 1; // 资格定义ID ULID [required]
+  string name = 2;       // 资格定义名称 [required]
+  string description = 3; // 资格定义描述 [required]
+  repeated CredentialFileConstraint file_constraints = 4; // 文件约束
+  string category = 5;   // 资格大类，例如：学业类、法律类 [required]
+  string respath = 6;    // 权限资源路径 [required]
+}
+
+message Credential {
+  string cred_id = 1;     // 唯一ID ULID [required]
+  string cred_guid = 2;   // 跨版本业务唯一 ID
+  string candidate_id = 3; // 考生逻辑 ID (ULID)
+  string cred_def_id = 4;  // 资格定义ID ULID [required]
+  uint32 version = 5;     // 版本号 [required]
+  CredentialStatus status = 6; // 资格状态 [required]
+  
+  repeated FileInfo files = 7; // 文件列表 [required]
+  
+  string auditor_id = 8; // 审核人ID ULID [optional]
+  string audit_remark = 9; // 审核备注 [optional]
+  string valid_until = 10; // 有效期 RFC3339 格式字符串 [optional]
+  string created_at = 11;  // 创建时间 RFC3339 格式字符串 [optional]
+}
+
+message FileInfo {
+  string file_hash = 1; // SHA256 [required]
+  string file_name = 2; // 文件名 [required]
+  CredentialFileType file_type = 3; // 文件类型 [required]
+  string file_ext = 4; // 文件扩展名 [required]
+  uint64 file_size = 5; // 文件大小 [required]
+  string file_usage = 6; // 文件用途, 如 "front_view" [optional]
+  string view_url = 7;   // S3 presigned view URL
+}
+
+message Application {
+  string app_id = 1; // 申请ID ULID [required]
+  string candidate_id = 2; // 考生ID ULID [required]
+  string cred_def_id = 3; // 资格定义ID ULID [required]
+  string status = 4; // 申请状态 "PENDING", "APPROVED", "REJECTED" [required]
+  repeated FileInfo files = 5; // 文件列表 [required]
+  
+  string auditor_id = 6; // 审核人ID ULID [optional]
+  string audit_remark = 7; // 审核备注 [optional]
+  string audit_at = 8; // 审核时间 RFC3339 格式字符串 [optional]
+  string created_at = 9; // RFC3339 格式字符串 [optional]
+  uint32 update_count = 10; // 重新上传/修改次数
+}
+
+// --- 请求与响应参数 ---
+
+message CreateCredentialDefinitionRequest {
+  string cred_def_id = 1; // 资格定义ID ULID [required]
+  string name = 2; // 资格定义名称 [required]
+  string description = 3; // 资格定义描述 [required]
+  repeated CredentialFileConstraint file_constraints = 4; // 文件约束 [required]
+  string category = 5; // 资格大类，例如：学业类、法律类 [required]
+  string respath = 6; // 权限资源路径 [required]
+}
+
+message ListCredentialDefinitionsRequest {}
+message ListCredentialDefinitionsResponse {
+  repeated CredentialDefinitionSummary definitions = 1;
+}
+
+message SubmitApplicationRequest {
+  string candidate_id = 1; // 考生ID ULID [required]
+  string cred_def_id = 2; // 资格定义ID ULID [required]
+  repeated FileInfo files = 3; // 文件列表 [required]
+}
+
+message AuditApplicationRequest {
+  string app_id = 1; // 申请ID ULID [required]
+  bool approved = 2; // 是否批准
+  string auditor_id = 3; // 审核人ID ULID [required]
+  string audit_remark = 4; // 审核备注 [required]
+  string valid_until = 5; // 有效期 RFC3339 格式字符串 [required]
+  bool allow_reupload = 6; // 审核不通过时，是否允许考生重新上传 [optional]
+}
+
+message UpdateApplicationRequest {
+  string app_id = 1; // 申请ID ULID [required]
+  string candidate_id = 2; // 考生ID ULID [required]
+  repeated FileInfo files = 3; // 考生更新/替换的文件列表 [required]
+}
+
+
+message ListApplicationsRequest {
+  string candidate_id = 1; // [optional] 考生ID ULID
+  string cred_def_id = 2;  // [optional] 资格定义ID ULID
+  uint32 page = 3;         // [optional] 页码, 1-based
+  uint32 page_size = 4;    // [optional] 每页数量
+}
+
+message ListApplicationsResponse {
+  repeated ApplicationSummary applications = 1; // 申请列表
+  uint32 total = 2;                      // 总数
+}
+
+message GrantUploadPermissionRequest {
+  string candidate_id = 1; // 考生ID ULID [required]
+  string cred_def_id = 2; // 资格定义ID ULID [required]
+  string operator_id = 3; // 调用方操作人或系统ID [required]
+  string reason = 4; // 原因 [required]
+  string source_system = 5; // 系统来源 [required]
+}
+
+message RevokeUploadPermissionRequest {
+  string candidate_id = 1; // 考生ID ULID [required]
+  string cred_def_id = 2; // 资格定义ID ULID [required]
+  string operator_id = 3; // 调用方操作人或系统ID [required]
+  string reason = 4; // 原因 [required]
+  string source_system = 5; // 系统来源 [required]
+}
+
+message CheckUploadPermissionRequest {
+  string candidate_id = 1; // 考生ID ULID [required]
+  string cred_def_id = 2; // 资格定义ID ULID [required]
+}
+
+message UploadPermissionResponse {
+  string candidate_id = 1; // 考生ID ULID [required]
+  string cred_def_id = 2; // 资格定义ID ULID [required]
+  bool granted = 3; // 当前是否已授予上传权限 [required]
+  string message = 4; // 人类可读说明 [required]
+}
+
+message GetLatestCredentialRequest {
+  string candidate_id = 1; // 考生ID ULID [required]
+  string cred_def_id = 2; // 资格定义ID ULID [required]
+  bool without_files = 3;  // [optional] 是否排除文件列表
+}
+
+message CheckCandidateQualificationRequest {
+  string candidate_id = 1; // 考生ID ULID [required]
+  string cred_def_id = 2; // 资格定义ID ULID [required]
+}
+
+message CheckCandidateQualificationResponse {
+  bool eligible = 1; // 是否持有有效资格
+  CredentialStatus credential_status = 2; // 当前资格状态；若无记录则为 UNSPECIFIED
+  string message = 3; // 人类可读的说明
+}
+
+message GetCredentialVersionRequest {
+  string candidate_id = 1; // 考生ID ULID [required]
+  string cred_def_id = 2; // 资格定义ID ULID [required]
+  uint32 version = 3; // 版本号 [required]
+  bool without_files = 4;  // [optional] 是否排除文件列表
+}
+
+message MarkExpiredRequest {
+  string candidate_id = 1; // 考生ID ULID [required]
+  string cred_def_id = 2; // 资格定义ID ULID [required]
+  string auditor_id = 3; // 审核人ID ULID [required]
+  string reason = 4; // 原因 [required]
+}
+
+message RevokeCredentialRequest {
+  string candidate_id = 1; // 考生ID ULID [required]
+  string cred_def_id = 2; // 资格定义ID ULID [required]
+  string auditor_id = 3; // 审核人ID ULID [required]
+  string reason = 4; // 原因 [required]
+}
+
+// --- PDF 证书模板 (PdfTemplate) ---
+
+enum PdfRequestStatus {
+  PDF_REQUEST_STATUS_UNSPECIFIED = 0;
+  PDF_REQUEST_STATUS_PENDING = 1;
+  PDF_REQUEST_STATUS_PROCESSING = 2;
+  PDF_REQUEST_STATUS_COMPLETED = 3;
+  PDF_REQUEST_STATUS_FAILED = 4;
+}
+
+message PdfTemplateDetail {
+  string template_id = 1;   // 模板ID ULID [required]
+  string name = 2;          // 模板名称 [required]
+  string description = 3;   // 模板用途描述 [optional]
+  string html_template = 4; // HTML证书模板 (Go html/template) [required]
+  uint32 version = 5;       // 乐观锁版本号 [required]
+  string created_at = 6;    // 创建时间 RFC3339 [optional]
+  string updated_at = 7;    // 最后修改时间 RFC3339 [optional]
+  string parameter_schema = 8; // 参数模式定义 JSON Schema [optional]
+}
+
+message CreatePdfTemplateRequest {
+  string template_id = 1;   // 模板ID ULID [required]
+  string name = 2;          // 模板名称 [required]
+  string description = 3;   // 模板用途描述 [optional]
+  string html_template = 4; // HTML证书模板 (Go html/template) [required]
+  string parameter_schema = 5; // 参数模式定义 JSON Schema [optional]
+}
+
+message UpdatePdfTemplateRequest {
+  string template_id = 1;   // 模板ID ULID [required]
+  string name = 2;          // 模板名称 [required]
+  string description = 3;   // 模板用途描述 [optional]
+  string html_template = 4; // HTML证书模板 (Go html/template) [required]
+  string parameter_schema = 5; // 参数模式定义 JSON Schema [optional]
+}
+
+message GetPdfTemplateRequest {
+  string template_id = 1; // 模板ID ULID [required]
+}
+
+message ListPdfTemplatesRequest {}
+
+message ListPdfTemplatesResponse {
+  repeated PdfTemplateSummary templates = 1;
+}
+
+// --- PDF 证书生成请求 (PdfRequest) ---
+
+message PdfRequest {
+  string request_id = 1;    // 请求ID ULID [required]
+  string business_unit = 2; // 业务系统标识 [required]
+  string ext_ref_id = 3;    // 外部引用ID [optional]
+  string candidate_id = 4;  // 考生ID ULID [required]
+  string cred_def_id = 5;    // 资格定义ID ULID [required]
+  string degree_no = 6;     // 学位号 [required]
+  string template_id = 7;   // 模板ID ULID [required]
+  string template_params = 8; // 模板渲染参数 JSON字符串 [required]
+  string issue_date = 9;    // 证书颁发时间 RFC3339 [optional]
+  string expiry_date = 10;  // 证书过期时间 RFC3339, 空表示永不过期 [optional]
+  PdfRequestStatus status = 11; // 请求状态 [required]
+  string pdf_file_hash = 12; // PDF文件SHA256哈希 [optional]
+  string cred_id = 13;       // 关联的资格ID ULID [optional]
+  string error_message = 14; // 错误详情 [optional]
+  uint32 retry_count = 15;   // 当前重试次数
+  uint32 max_retries = 16;   // 最大重试次数
+  string scheduled_at = 17;  // 计划处理时间 RFC3339
+  string created_at = 18;    // 创建时间 RFC3339 [optional]
+  string updated_at = 19;    // 最后修改时间 RFC3339 [optional]
+}
+
+message CreatePdfRequestRequest {
+  string request_id = 1;     // 请求ID ULID, 由客户端生成 [required]
+  string business_unit = 2;  // 业务系统标识 [required]
+  string candidate_id = 3;   // 考生ID ULID [required]
+  string cred_def_id = 4;     // 资格定义ID ULID [required]
+  string degree_no = 5;      // 学位号 [required]
+  string template_id = 6;    // 模板ID ULID [required]
+  string template_params = 7;// 模板渲染参数 JSON字符串 [required]
+  string issue_date = 8;     // 证书颁发时间 RFC3339 [optional]
+  string expiry_date = 9;    // 证书过期时间 RFC3339 [optional]
+  string ext_ref_id = 10;    // 外部引用ID [optional]
+}
+
+message UpdatePdfRequestRequest {
+  string request_id = 1;     // 请求ID ULID [required]
+  string degree_no = 2;      // 学位号 [required]
+  string template_id = 3;    // 模板ID ULID [required]
+  string template_params = 4;// 模板渲染参数 JSON字符串 [required]
+  string issue_date = 5;     // 证书颁发时间 RFC3339 [optional]
+  string expiry_date = 6;    // 证书过期时间 RFC3339 [optional]
+  string ext_ref_id = 7;     // 外部引用ID [optional]
+}
+
+message GetPdfRequestRequest {
+  string request_id = 1; // 请求ID ULID [required]
+}
+
+message GetPdfCertificateRequest {
+  string request_id = 1; // 请求ID ULID [required]
+}
+
+message GetPdfCertificateResponse {
+  bytes pdf_data = 1;  // PDF证书文件内容 [required]
+  string sha256 = 2;   // PDF文件SHA256哈希 [required]
+  string file_name = 3;// 证书文件名 [optional]
+}
+
+message ListPdfRequestsRequest {
+  PdfRequestStatus status = 1; // [optional] 根据状态过滤, PDF_REQUEST_STATUS_UNSPECIFIED 表示不指定状态
+  uint32 page = 2;             // [optional] 页码, 1-based
+  uint32 page_size = 3;        // [optional] 每页数量
+}
+
+message ListPdfRequestsResponse {
+  repeated PdfRequestSummary requests = 1; // PDF 生成请求列表
+  uint32 total = 2;                 // 总数
+}
+
+message RequestUploadUrlRequest {
+  string candidate_id = 1;   // 考生 ID [required]
+  string cred_def_id = 2;    // 资格定义 ID [required]
+  string file_hash = 3;      // 文件 SHA256 哈希 [required]
+  string file_ext = 4;       // 文件扩展名 [required]
+  string content_type = 5;   // HTTP Content-Type (如 image/png) [required]
+  string file_usage = 6;     // 文件用途, 如 "front_view" [required]
+}
+
+message RequestUploadUrlResponse {
+  string upload_url = 1;     // S3 presigned PUT URL
+  string file_key = 2;       // 对应的 S3 Key
+  map<string, string> signed_headers = 3; // 预签名上传需要附带的 HTTP Header
+}
+
+// ==========================================
+// --- New Summary and Request/Response ---
+// ==========================================
+
+message CredentialDefinitionSummary {
+  string cred_def_id = 1;
+  string name = 2;
+  string category = 3;
+}
+
+message ApplicationSummary {
+  string app_id = 1;
+  string candidate_id = 2;
+  string cred_def_id = 3;
+  string status = 4;
+  string auditor_id = 5;
+  string audit_remark = 6;
+  string audit_at = 7;
+  string created_at = 8;
+  uint32 update_count = 9;
+}
+
+message CredentialSummary {
+  string cred_id = 1;
+  string cred_guid = 2;
+  string candidate_id = 3;
+  string cred_def_id = 4;
+  uint32 version = 5;
+  CredentialStatus status = 6;
+  string auditor_id = 7;
+  string audit_remark = 8;
+  string valid_until = 9;
+  string created_at = 10;
+}
+
+message PdfTemplateSummary {
+  string template_id = 1;
+  string name = 2;
+  string description = 3;
+  uint32 version = 4;
+  string created_at = 5;
+  string updated_at = 6;
+}
+
+message PdfRequestSummary {
+  string request_id = 1;
+  string business_unit = 2;
+  string ext_ref_id = 3;
+  string candidate_id = 4;
+  string cred_def_id = 5;
+  string degree_no = 6;
+  string template_id = 7;
+  string issue_date = 8;
+  string expiry_date = 9;
+  PdfRequestStatus status = 10;
+  string pdf_file_hash = 11;
+  string cred_id = 12;
+  uint32 retry_count = 13;
+  uint32 max_retries = 14;
+  string scheduled_at = 15;
+  string created_at = 16;
+  string updated_at = 17;
+}
+
+message GetCredentialDefinitionDetailRequest {
+  string cred_def_id = 1;
+}
+
+message GetApplicationDetailRequest {
+  string app_id = 1;
+}
+
+message GetCredentialDetailRequest {
+  string cred_id = 1;
+}
+
+message ListCredentialsRequest {
+  string candidate_id = 1;
+  string cred_def_id = 2;
+  string status = 3;
+  uint32 page = 4;
+  uint32 page_size = 5;
+}
+
+message ListCredentialsResponse {
+  repeated CredentialSummary credentials = 1;
+  uint32 total = 2;
+}
+
+message CheckResourcesExistRequest {
+  repeated string cred_def_ids = 1;
+  repeated string pdf_template_ids = 2;
+}
+
+message CheckResourcesExistResponse {
+  repeated string missing_cred_def_ids = 1;
+  repeated string missing_pdf_template_ids = 2;
+}
+
+message ListCandidateCredentialsRequest {
+  string candidate_id = 1; // 考生ID ULID [required]
+  uint32 page = 2;         // [optional] 页码, 1-based
+  uint32 page_size = 3;    // [optional] 每页数量
+}
+
+message ListCandidateCredentialsResponse {
+  repeated CredentialSummary credentials = 1;
+  uint32 total = 2;
+}
+
+message ListCandidateEligibleDefinitionsRequest {
+  string candidate_id = 1; // 考生ID ULID [required]
+}
+
+message EligibleCredentialDefinition {
+  string cred_def_id = 1;
+  string name = 2;
+  string category = 3;
+  string description = 4;
+
+  reserved 5, 6, 7, 8;
+  reserved "latest_application_status", "latest_application_id", "current_credential_status", "current_credential_id";
+}
+
+message ListCandidateEligibleDefinitionsResponse {
+  repeated EligibleCredentialDefinition definitions = 1;
+}
+
+message AdminPurgeCandidateCredentialsRequest {
+  string candidate_id = 1;        // candidate ID [required]
+  string cred_def_id = 2;         // credential definition ID [required]
+  string admin_id = 3;            // admin ID [required]
+}
+
+message AdminPurgeCandidateCredentialsResponse {
+  bool success = 1;
+  string message = 2;
+}

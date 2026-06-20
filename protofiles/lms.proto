@@ -1,0 +1,2039 @@
+syntax = "proto3";
+
+package glms;
+
+option go_package = "cftp/glms";
+
+// 课程资料类型
+enum MaterialType {
+  MATERIAL_TYPE_UNSPECIFIED = 0; // 未指定
+  MATERIAL_TYPE_TEXTBOOK = 1;    // 教材/课本
+  MATERIAL_TYPE_SLIDES = 2;      // 幻灯片/课件
+  MATERIAL_TYPE_REFERENCE = 3;   // 参考资料
+  MATERIAL_TYPE_OTHER = 4;       // 其他
+}
+
+// 课时内容类型
+enum LessonType {
+  LESSON_TYPE_UNSPECIFIED = 0; // 未指定
+  LESSON_TYPE_VIDEO = 1;       // 视频
+  LESSON_TYPE_TEXT = 2;        // 文本
+  LESSON_TYPE_PDF = 3;         // PDF文档
+  LESSON_TYPE_IMAGE = 4;       // 图片
+  LESSON_TYPE_AUDIO = 5;       // 音频
+  LESSON_TYPE_FILE = 6;        // 文件
+  LESSON_TYPE_LINK = 7;        // 外部链接
+}
+
+// 学习实体类型（用于前置条件系统）
+enum EntityType {
+  ENTITY_TYPE_UNSPECIFIED = 0; // 未指定
+  ENTITY_TYPE_LESSON = 1;      // 课时
+  ENTITY_TYPE_QUIZ = 2;        // 测验
+  ENTITY_TYPE_CHAPTER = 3;     // 章节
+  ENTITY_TYPE_COURSE = 4;      // 课程
+}
+
+// 前置条件满足结果
+enum PrerequisiteResult {
+  PREREQUISITE_RESULT_UNSPECIFIED = 0; // 未指定
+  PREREQUISITE_RESULT_COMPLETED = 1;   // 已完成（适用于课时/章节/课程）
+  PREREQUISITE_RESULT_PASSED = 2;      // 已通过（适用于测验）
+}
+
+// 测验所属实体类型
+enum QuizzableType {
+  QUIZZABLE_TYPE_UNSPECIFIED = 0; // 未指定
+  QUIZZABLE_TYPE_LESSON = 1;      // 课时级测验
+  QUIZZABLE_TYPE_CHAPTER = 2;     // 章节级测验（章末测试）
+  QUIZZABLE_TYPE_COURSE = 3;      // 课程级测验（期末考试）
+}
+
+// 测验题目类型
+enum QuizQuestionType {
+  QUIZ_QUESTION_TYPE_UNSPECIFIED = 0;   // 未指定
+  QUIZ_QUESTION_TYPE_SINGLE_CHOICE = 1; // 单选题
+  QUIZ_QUESTION_TYPE_MULTIPLE_CHOICE = 2; // 多选题
+  QUIZ_QUESTION_TYPE_TRUE_FALSE = 3;    // 判断题
+}
+
+// 资源包文件类型
+enum ResourcePackFileType {
+  RESOURCE_PACK_FILE_TYPE_UNSPECIFIED = 0; // 未指定
+  RESOURCE_PACK_FILE_TYPE_VIDEO = 1;       // 视频
+  RESOURCE_PACK_FILE_TYPE_PDF = 2;         // PDF文档
+  RESOURCE_PACK_FILE_TYPE_ZIP = 3;         // ZIP压缩包
+}
+
+// 上传类型（决定S3存储路径和校验规则）
+enum UploadType {
+  UPLOAD_TYPE_UNSPECIFIED = 0;       // 未指定
+  UPLOAD_TYPE_COURSE_THUMBNAIL = 1;  // 课程封面图
+  UPLOAD_TYPE_COURSE_MATERIAL = 2;   // 课程资料文件
+  UPLOAD_TYPE_LESSON_ASSET = 3;      // 课时素材文件
+  UPLOAD_TYPE_QUIZ_ASSET = 4;        // 测验素材文件
+  UPLOAD_TYPE_RESOURCE_PACK_THUMBNAIL = 5;  // 资源包封面图
+  UPLOAD_TYPE_RESOURCE_PACK_FILE = 6;       // 资源包文件
+}
+
+
+service LmsService {
+  // ==========================================
+  // 1. 管理端 & 内部微服务调用接口 (Admin & Internal Services - Suffixed with Admin)
+  // ==========================================
+  rpc CreateCourseDraftAdmin(CreateCourseDraftRequest) returns (Course);
+  rpc DuplicateCourseDraftAdmin(DuplicateCourseDraftRequest) returns (Course);
+  rpc UpdateCourseAdmin(UpdateCourseRequest) returns (UpdateCourseResponse);
+  rpc DeleteCourseAdmin(DeleteCourseRequest) returns (DeleteCourseResponse);
+  rpc PublishCourseAdmin(PublishCourseRequest) returns (PublishCourseResponse);
+  rpc GetCourseSummaryAdmin(GetCourseRequest) returns (GetCourseSummaryResponse);
+  rpc GetCourseDetailAdmin(GetCourseDetailRequest) returns (GetCourseDetailResponse);
+  rpc ListCoursesAdmin(ListCoursesRequest) returns (ListCoursesResponse);
+
+  rpc CreateCourseMaterialAdmin(CreateCourseMaterialRequest) returns (CreateCourseMaterialResponse);
+  rpc UpdateCourseMaterialAdmin(UpdateCourseMaterialRequest) returns (UpdateCourseMaterialResponse);
+  rpc DeleteCourseMaterialAdmin(DeleteCourseMaterialRequest) returns (DeleteCourseMaterialResponse);
+  rpc GetCourseMaterialAdmin(GetCourseMaterialRequest) returns (GetCourseMaterialResponse);
+  rpc GetCourseMaterialDetailAdmin(GetCourseMaterialRequest) returns (GetCourseMaterialDetailResponse);
+  rpc ListCourseMaterialsAdmin(ListCourseMaterialsRequest) returns (ListCourseMaterialsResponse);
+  rpc ReorderCourseMaterialsAdmin(ReorderCourseMaterialsRequest) returns (ReorderCourseMaterialsResponse);
+
+  rpc CreateChapterAdmin(CreateChapterRequest) returns (CreateChapterResponse);
+  rpc UpdateChapterAdmin(UpdateChapterRequest) returns (UpdateChapterResponse);
+  rpc DeleteChapterAdmin(DeleteChapterRequest) returns (DeleteChapterResponse);
+  rpc GetChapterAdmin(GetChapterRequest) returns (GetChapterResponse);
+  rpc GetChapterDetailAdmin(GetChapterRequest) returns (GetChapterDetailResponse);
+  rpc ListChaptersAdmin(ListChaptersRequest) returns (ListChaptersResponse);
+  rpc ReorderChaptersAdmin(ReorderChaptersRequest) returns (ReorderChaptersResponse);
+
+  rpc CreateLessonAdmin(CreateLessonRequest) returns (CreateLessonResponse);
+  rpc UpdateLessonAdmin(UpdateLessonRequest) returns (UpdateLessonResponse);
+  rpc DeleteLessonAdmin(DeleteLessonRequest) returns (DeleteLessonResponse);
+  rpc GetLessonAdmin(GetLessonRequest) returns (GetLessonResponse);
+  rpc GetLessonDetailAdmin(GetLessonRequest) returns (GetLessonDetailResponse);
+  rpc ListLessonsAdmin(ListLessonsRequest) returns (ListLessonsResponse);
+  rpc ReorderLessonsAdmin(ReorderLessonsRequest) returns (ReorderLessonsResponse);
+  rpc ListLessonsByCourseAdmin(ListLessonsByCourseRequest) returns (ListLessonsByCourseResponse);
+
+  rpc CreatePrerequisiteAdmin(CreatePrerequisiteRequest) returns (CreatePrerequisiteResponse);
+  rpc UpdatePrerequisiteAdmin(UpdatePrerequisiteRequest) returns (UpdatePrerequisiteResponse);
+  rpc DeletePrerequisiteAdmin(DeletePrerequisiteRequest) returns (DeletePrerequisiteResponse);
+  rpc GetPrerequisiteAdmin(GetPrerequisiteRequest) returns (GetPrerequisiteResponse);
+  rpc GetPrerequisiteDetailAdmin(GetPrerequisiteRequest) returns (GetPrerequisiteDetailResponse);
+  rpc ListPrerequisitesAdmin(ListPrerequisitesRequest) returns (ListPrerequisitesResponse);
+  rpc ListPrerequisitesByRequiredEntityAdmin(ListPrerequisitesByRequiredEntityRequest) returns (ListPrerequisitesByRequiredEntityResponse);
+
+  rpc CreateQuizAdmin(CreateQuizRequest) returns (CreateQuizResponse);
+  rpc UpdateQuizAdmin(UpdateQuizRequest) returns (UpdateQuizResponse);
+  rpc DeleteQuizAdmin(DeleteQuizRequest) returns (DeleteQuizResponse);
+  rpc GetQuizAdmin(GetQuizRequest) returns (GetQuizResponse);
+  rpc GetQuizDetailAdmin(GetQuizDetailRequest) returns (GetQuizDetailResponse);
+  rpc ListQuizzesAdmin(ListQuizzesRequest) returns (ListQuizzesResponse);
+
+  rpc CreateQuizQuestionAdmin(CreateQuizQuestionRequest) returns (CreateQuizQuestionResponse);
+  rpc UpdateQuizQuestionAdmin(UpdateQuizQuestionRequest) returns (UpdateQuizQuestionResponse);
+  rpc DeleteQuizQuestionAdmin(DeleteQuizQuestionRequest) returns (DeleteQuizQuestionResponse);
+  rpc GetQuizQuestionAdmin(GetQuizQuestionRequest) returns (GetQuizQuestionResponse);
+  rpc GetQuizQuestionDetailAdmin(GetQuizQuestionRequest) returns (GetQuizQuestionDetailResponse);
+  rpc ListQuizQuestionsAdmin(ListQuizQuestionsRequest) returns (ListQuizQuestionsResponse);
+  rpc ReorderQuizQuestionsAdmin(ReorderQuizQuestionsRequest) returns (ReorderQuizQuestionsResponse);
+
+  rpc CreateQuizOptionAdmin(CreateQuizOptionRequest) returns (CreateQuizOptionResponse);
+  rpc UpdateQuizOptionAdmin(UpdateQuizOptionRequest) returns (UpdateQuizOptionResponse);
+  rpc DeleteQuizOptionAdmin(DeleteQuizOptionRequest) returns (DeleteQuizOptionResponse);
+  rpc GetQuizOptionAdmin(GetQuizOptionRequest) returns (GetQuizOptionResponse);
+  rpc GetQuizOptionDetailAdmin(GetQuizOptionRequest) returns (GetQuizOptionDetailResponse);
+  rpc ListQuizOptionsAdmin(ListQuizOptionsRequest) returns (ListQuizOptionsResponse);
+  rpc ReorderQuizOptionsAdmin(ReorderQuizOptionsRequest) returns (ReorderQuizOptionsResponse);
+
+  rpc ImportQuizAdmin(ImportQuizRequest) returns (ImportQuizResponse);
+  rpc ImportCourseAdmin(ImportCourseRequest) returns (ImportCourseResponse);
+  rpc ListObjectsAdmin(ListObjectsRequest) returns (ListObjectsResponse);
+  rpc CreateUploadURLAdmin(CreateUploadURLRequest) returns (CreateUploadURLResponse);
+  rpc ListBrokenAssetsAdmin(ListBrokenAssetsRequest) returns (ListBrokenAssetsResponse);
+
+  rpc EnrollCandidateCourseAdmin(EnrollCandidateCourseRequest) returns (EnrollCandidateCourseResponse);
+  rpc BatchEnrollCandidateCoursesAdmin(BatchEnrollCandidateCoursesRequest) returns (BatchEnrollCandidateCoursesResponse);
+  rpc GrantCourseAccessPermissionAdmin(GrantCourseAccessPermissionAdminRequest) returns (GrantCourseAccessPermissionAdminResponse);
+  rpc RevokeCourseAccessPermissionAdmin(RevokeCourseAccessPermissionAdminRequest) returns (RevokeCourseAccessPermissionAdminResponse);
+
+  rpc ListLessonProgressAdmin(ListLessonProgressRequest) returns (ListLessonProgressResponse);
+  rpc GetLessonProgressDetailAdmin(GetLessonProgressDetailRequest) returns (GetLessonProgressDetailResponse);
+  rpc ListQuizAttemptsAdmin(ListQuizAttemptsRequest) returns (ListQuizAttemptsResponse);
+  rpc GetQuizAttemptDetailAdmin(GetQuizAttemptDetailRequest) returns (GetQuizAttemptDetailResponse);
+  rpc ListChapterProgressAdmin(ListChapterProgressRequest) returns (ListChapterProgressResponse);
+  rpc GetChapterProgressDetailAdmin(GetChapterProgressDetailRequest) returns (GetChapterProgressDetailResponse);
+  rpc ListCourseAssetsAdmin(ListCourseAssetsRequest) returns (ListCourseAssetsResponse);
+  rpc GetCourseAssetDetailAdmin(GetCourseAssetDetailRequest) returns (GetCourseAssetDetailResponse);
+  rpc ListCourseEnrollmentsAdmin(ListCourseEnrollmentsRequest) returns (ListCourseEnrollmentsResponse);
+  rpc GetCourseEnrollmentDetailAdmin(GetCourseEnrollmentDetailRequest) returns (GetCourseEnrollmentDetailResponse);
+  rpc ListCourseEnrollmentsForAdmin(ListCourseEnrollmentsForAdminRequest) returns (ListCourseEnrollmentsForAdminResponse);
+  rpc GetCandidateProgressForAdmin(GetCandidateProgressForAdminRequest) returns (GetCandidateProgressForAdminResponse);
+  rpc SyncCourseProgressAdmin(SyncCourseProgressRequest) returns (SyncCourseProgressResponse);
+  rpc GetCompleteCourseAdmin(GetCompleteCourseRequest) returns (GetCompleteCourseResponse);
+  rpc CreateViewURLAdmin(CreateViewURLRequest) returns (CreateViewURLResponse);
+
+  rpc CreateCourseSupplementaryMaterialAdmin(CreateCourseSupplementaryMaterialRequest) returns (CreateCourseSupplementaryMaterialResponse);
+  rpc UpdateCourseSupplementaryMaterialAdmin(UpdateCourseSupplementaryMaterialRequest) returns (UpdateCourseSupplementaryMaterialResponse);
+  rpc DeleteCourseSupplementaryMaterialAdmin(DeleteCourseSupplementaryMaterialRequest) returns (DeleteCourseSupplementaryMaterialResponse);
+  rpc GetCourseSupplementaryMaterialAdmin(GetCourseSupplementaryMaterialRequest) returns (GetCourseSupplementaryMaterialResponse);
+
+  rpc CreateResourcePackAdmin(CreateResourcePackRequest) returns (ResourcePack);
+  rpc UpdateResourcePackAdmin(UpdateResourcePackRequest) returns (ResourcePack);
+  rpc DeleteResourcePackAdmin(DeleteResourcePackRequest) returns (DeleteResourcePackResponse);
+  rpc GetResourcePackAdmin(GetResourcePackRequest) returns (ResourcePack);
+  rpc ListResourcePacksAdmin(ListResourcePacksRequest) returns (ListResourcePacksResponse);
+
+  rpc CreateResourcePackFileAdmin(CreateResourcePackFileRequest) returns (ResourcePackFile);
+  rpc UpdateResourcePackFileAdmin(UpdateResourcePackFileRequest) returns (ResourcePackFile);
+  rpc DeleteResourcePackFileAdmin(DeleteResourcePackFileRequest) returns (DeleteResourcePackFileResponse);
+  rpc GetResourcePackFileAdmin(GetResourcePackFileRequest) returns (ResourcePackFile);
+  rpc ListResourcePackFilesAdmin(ListResourcePackFilesRequest) returns (ListResourcePackFilesResponse);
+  rpc UpdateResourcePackFileThumbnailAdmin(UpdateResourcePackFileThumbnailRequest) returns (ResourcePackFile);
+
+  // ==========================================
+  // 2. 考生端接口 (Candidate-facing APIs - check candidateUlid & Casdoor permissions)
+  // ==========================================
+  rpc GetCourseSummary(GetCourseSummaryCandidateRequest) returns (GetCourseSummaryResponse);
+  rpc GetCourseDetail(GetCourseDetailCandidateRequest) returns (GetCourseDetailResponse);
+  rpc ListCourses(ListCoursesCandidateRequest) returns (ListCoursesResponse);
+  rpc GetCourseMaterial(GetCourseMaterialCandidateRequest) returns (GetCourseMaterialResponse);
+  rpc GetCourseMaterialDetail(GetCourseMaterialCandidateRequest) returns (GetCourseMaterialDetailResponse);
+  rpc ListCourseMaterials(ListCourseMaterialsCandidateRequest) returns (ListCourseMaterialsResponse);
+  rpc GetChapter(GetChapterCandidateRequest) returns (GetChapterResponse);
+  rpc GetChapterDetail(GetChapterDetailCandidateRequest) returns (GetChapterDetailResponse);
+  rpc ListChapters(ListChaptersCandidateRequest) returns (ListChaptersResponse);
+  rpc GetLesson(GetLessonCandidateRequest) returns (GetLessonResponse);
+  rpc GetLessonDetail(GetLessonDetailCandidateRequest) returns (GetLessonDetailResponse);
+  rpc ListLessons(ListLessonsCandidateRequest) returns (ListLessonsResponse);
+  rpc ListLessonsByCourse(ListLessonsByCourseCandidateRequest) returns (ListLessonsByCourseResponse);
+  rpc GetCompleteCourse(GetCompleteCourseCandidateRequest) returns (GetCompleteCourseResponse);
+  rpc GetQuiz(GetQuizCandidateRequest) returns (GetQuizResponse);
+  rpc ListQuizzes(ListQuizzesCandidateRequest) returns (ListQuizzesResponse);
+  rpc CreateViewURL(CreateViewURLCandidateRequest) returns (CreateViewURLResponse);
+  rpc GetLessonVideoPlayURL(GetLessonVideoPlayURLRequest) returns (GetLessonVideoPlayURLResponse);
+  rpc GetResourcePackFileViewURL(GetResourcePackFileViewURLRequest) returns (GetResourcePackFileViewURLResponse);
+  rpc ListResourcePacks(ListResourcePacksCandidateRequest) returns (ListResourcePacksResponse);
+  rpc ListResourcePackFiles(ListResourcePackFilesCandidateRequest) returns (ListResourcePackFilesResponse);
+
+  // 考生作答与交互型接口 (已经带 candidate_id，仅需补充 Casdoor / 选课校验)
+  rpc CompleteLessonLearning(CompleteLessonLearningRequest) returns (CompleteLessonLearningResponse);
+  rpc TakeQuiz(TakeQuizRequest) returns (TakeQuizResponse);
+  rpc GetCandidateQuizPaper(GetCandidateQuizPaperRequest) returns (GetCandidateQuizPaperResponse);
+  rpc SubmitQuiz(SubmitQuizRequest) returns (SubmitQuizResponse);
+  rpc ListCandidateEnrollments(ListCandidateEnrollmentsRequest) returns (ListCandidateEnrollmentsResponse);
+  rpc GetCandidateEnrollmentDetail(GetCandidateEnrollmentDetailRequest) returns (GetCandidateEnrollmentDetailResponse);
+
+  rpc AdminPurgeCandidateCourses(AdminPurgeCandidateCoursesRequest) returns (AdminPurgeCandidateCoursesResponse);
+}
+
+// 课程实体（支持版本化：每次编辑生成新版本，发布后旧版本标记为Deprecated）
+message Course {
+  string course_id = 1;             // 课程版本唯一ID (ULID)，每次编辑生成新ID
+  string category_tips = 2;         // 分类提示，客户端按相同值分组展示，最长64字符
+  string title = 3;                 // 课程标题
+  string description = 4;           // 课程简介
+  string thumbnail_object_key = 5;  // 课程封面图S3对象key
+  uint32 duration_min = 6;          // 课程总时长（分钟），仅用于展示
+  bool certification_enabled = 7;   // 是否启用结课认证
+  string certification_def_id = 8;  // 资格定义ID，关联外部认证系统
+  bool is_published = 9;            // 是否已发布（status=Active时为true，派生字段）
+  string published_at = 10;         // 发布时间 (UTC, RFC3339)
+  uint32 version = 11;              // 乐观锁版本号，每次更新递增
+  string created_at = 12;           // 创建时间 (UTC, RFC3339)
+  string updated_at = 13;           // 更新时间 (UTC, RFC3339)
+  string course_gpath = 14;         // 业务唯一路径，跨版本保持不变，同一课程的所有版本共享
+  string status = 15;               // 版本状态：Draft(草稿)/Active(已激活)/Deprecated(已废弃)
+  bool is_current = 16;             // 是否为当前生效版本（同一course_guid下仅一个为true）
+  string thumbnail_file_hash = 17;  // 课程封面图SHA256哈希
+  string respath = 18;              // Casdoor 权限资源路径
+}
+
+// 课程资料（附加于课程级别的教学资料，如教材、课件、参考文档等）
+message CourseMaterial {
+  string material_id = 1;        // 资料唯一ID (ULID)
+  string course_id = 2;          // 所属课程ID
+  string title = 3;              // 资料标题
+  MaterialType material_type = 4; // 资料类型
+  string description = 5;        // 资料描述
+  string file_object_key = 6;    // 文件S3对象key
+  uint64 file_size = 7;          // 文件大小（字节）
+  uint32 sort_order = 8;         // 排序序号，决定展示顺序
+  uint32 version = 9;            // 乐观锁版本号
+  string created_at = 10;        // 创建时间 (UTC, RFC3339)
+  string updated_at = 11;        // 更新时间 (UTC, RFC3339)
+  string file_hash = 12;         // 资料文件SHA256哈希
+}
+
+// 章节（课程的结构化分组，一个课程至少含一个章节才能发布）
+message Chapter {
+  string chapter_id = 1;  // 章节唯一ID (ULID)
+  string course_id = 2;   // 所属课程ID
+  string title = 3;       // 章节标题
+  uint32 sort_order = 4;  // 排序序号，决定章节在课程内的展示顺序
+  uint32 version = 5;     // 乐观锁版本号
+  string created_at = 6;  // 创建时间 (UTC, RFC3339)
+  string updated_at = 7;  // 更新时间 (UTC, RFC3339)
+}
+
+// 课时（章节内的最小学习单元，支持视频、文本、PDF、图片、音频、文件、链接等多种类型）
+message Lesson {
+  string lesson_id = 1;         // 课时唯一ID (ULID)
+  string chapter_id = 2;        // 所属章节ID
+  string title = 3;             // 课时标题
+  uint32 sort_order = 4;        // 排序序号，决定课时在章节内的展示顺序
+  LessonType lesson_type = 5;   // 课时类型，决定哪些内容字段生效
+  string body = 6;              // 文本内容（lesson_type=text时使用，可含富文本/HTML）
+  string media_object_key = 7;  // 媒体文件S3对象key（video/pdf/image/audio/file类型时使用）
+  string external_url = 8;      // 外部链接URL（lesson_type=link时使用）
+  string video_provider = 9;    // 视频提供商：cloudflare/youtube/other
+  string video_stream_uid = 10; // 视频流在提供商平台的唯一标识
+  string video_embed_code = 11; // 视频嵌入代码（与provider+uid二选一）
+  string meta_json = 12;        // 扩展元数据JSON，用于自定义扩展字段
+  uint32 version = 13;          // 乐观锁版本号
+  string created_at = 14;       // 创建时间 (UTC, RFC3339)
+  string updated_at = 15;       // 更新时间 (UTC, RFC3339)
+  string media_file_hash = 16;  // 媒体文件SHA256哈希
+}
+
+// 前置条件（定义学习顺序约束：实体A必须完成/通过后，实体B才可访问）
+message Prerequisite {
+  string prerequisite_id = 1;            // 前置条件唯一ID (ULID)
+  EntityType required_entity_type = 2;   // 前置实体类型（必须完成/通过的实体）
+  string required_entity_id = 3;         // 前置实体ID
+  PrerequisiteResult required_result = 4; // 前置要求结果：completed(已完成)/passed(已通过)
+  EntityType target_entity_type = 5;     // 目标实体类型（被约束的实体）
+  string target_entity_id = 6;           // 目标实体ID
+  uint32 version = 7;                    // 乐观锁版本号
+  string created_at = 8;                 // 创建时间 (UTC, RFC3339)
+  string updated_at = 9;                 // 更新时间 (UTC, RFC3339)
+}
+
+// 测验/考试（可附加到课程、章节或课时，由quizzable_type决定挂载位置）
+message Quiz {
+  reserved 8, 9;
+  string quiz_id = 1;                // 测验唯一ID (ULID)
+  QuizzableType quizzable_type = 2;  // 所属实体类型：lesson/chapter/course
+  string quizzable_id = 3;           // 所属实体ID（课时ID/章节ID/课程ID）
+  string title = 4;                  // 测验标题
+  string description = 5;            // 测验说明/答题指引
+  uint32 passing_score = 6;          // 及格分数（百分比 0-100，默认70）
+  uint32 time_limit = 7;             // 时间限制（分钟，0表示不限时）
+  // uint32 max_attempts = 8;           // 最大尝试次数（0表示不限次） (removed)
+  // bool allow_retake = 9;             // 是否允许通过后重考（默认true） (removed)
+  bool randomize_questions = 10;     // 是否随机排列题目顺序
+  uint32 version = 12;               // 乐观锁版本号
+  string created_at = 13;            // 创建时间 (UTC, RFC3339)
+  string updated_at = 14;            // 更新时间 (UTC, RFC3339)
+}
+
+// 测验题目
+message QuizQuestion {
+  string question_id = 1;            // 题目唯一ID (ULID)
+  string quiz_id = 2;                // 所属测验ID
+  string question_text = 3;          // 题目内容/题干
+  QuizQuestionType question_type = 4; // 题目类型：single_choice(单选)/multiple_choice(多选)/true_false(判断)
+  uint32 points = 5;                 // 分值（默认1）
+  uint32 sort_order = 6;             // 排序序号，决定题目在测验内的展示顺序
+  bool is_required = 7;              // 是否必答（默认true）
+  string media_items_json = 8;       // 媒体附件JSON数组（图片等）
+  uint32 version = 9;                // 乐观锁版本号
+  string created_at = 10;            // 创建时间 (UTC, RFC3339)
+  string updated_at = 11;            // 更新时间 (UTC, RFC3339)
+}
+
+// 测验选项（题目的可选答案）
+message QuizOption {
+  string option_id = 1;    // 选项唯一ID (ULID)
+  string question_id = 2;  // 所属题目ID
+  string option_text = 3;  // 选项内容
+  bool is_correct = 4;     // 是否为正确答案（单选仅一个correct，多选可多个）
+  uint32 sort_order = 5;   // 排序序号，决定选项展示顺序
+  uint32 version = 6;      // 乐观锁版本号
+  string created_at = 7;   // 创建时间 (UTC, RFC3339)
+  string updated_at = 8;   // 更新时间 (UTC, RFC3339)
+}
+
+// 排序项（用于批量重排序请求）
+message ReorderItem {
+  string entity_id = 1;  // 被排序的实体ID
+  uint32 sort_order = 2; // 新的排序序号
+  uint32 version = 3;    // 乐观锁版本号
+}
+
+// S3存储桶对象
+message BucketObject {
+  string bucket_name = 1;  // 存储桶名称
+  string object_key = 2;   // 对象key
+  uint64 file_size = 3;    // 文件大小（字节）
+  string last_modified = 4; // 最后修改时间 (UTC, RFC3339)
+}
+
+// ==================== 课程 RPC messages ====================
+
+message CreateCourseDraftRequest {
+  string category_tips = 1;        // 分类提示，客户端按相同值分组展示，最长64字符
+  string title = 2;                // 课程标题 ([required])
+  string description = 3;          // 课程简介
+  string thumbnail_object_key = 4; // 课程封面图S3对象key
+  uint32 duration_min = 5;         // 课程总时长（分钟）
+  bool certification_enabled = 6;  // 是否启用结课认证
+  string certification_def_id = 7; // 资格定义ID
+  reserved 8;                      // from_course_guid (deprecated)
+  string course_id = 9;            // 外部指定的课程版本ID ULID ([required])
+  string course_gpath = 10;        // 外部指定的课程业务唯一路径 ([required])
+  string thumbnail_file_hash = 11; // 课程封面图SHA256哈希
+  string respath = 12;             // Casdoor 权限资源路径
+}
+
+message DuplicateCourseDraftRequest {
+  string from_course_id = 1; // 数据源 course_id (特定版本唯一ID) [required]
+  string course_id = 2;      // 新的 course_id ULID (新草稿版本ID) [required]
+  string title = 3;          // 新的课程标题 [required]
+}
+
+message UpdateCourseRequest {
+  string course_id = 1;            // 课程版本ID ([required])
+  string category_tips = 2;        // 分类提示，客户端按相同值分组展示，最长64字符
+  string title = 3;                // 课程标题 ([required])
+  string description = 4;          // 课程简介
+  string thumbnail_object_key = 5; // 课程封面图S3对象key
+  uint32 duration_min = 6;         // 课程总时长（分钟）
+  bool certification_enabled = 7;  // 是否启用结课认证（已发布课程不可修改）
+  string certification_def_id = 8; // 资格定义ID（已发布课程不可修改）
+  uint32 version = 9;              // 乐观锁版本号 ([required])
+  string thumbnail_file_hash = 10; // 课程封面图SHA256哈希
+  string respath = 11;             // Casdoor 权限资源路径
+}
+
+message UpdateCourseResponse {
+  bool success = 1; // 是否成功
+}
+
+message DeleteCourseRequest {
+  string course_id = 1; // 课程版本ID ([required])
+  uint32 version = 2;   // 乐观锁版本号 ([required])
+}
+
+message DeleteCourseResponse {
+  bool success = 1; // 是否成功
+}
+
+message GetCourseRequest {
+  string course_id = 1; // 课程版本ID ([required])
+}
+
+message GetCourseResponse {
+  Course course = 1; // 课程详情
+}
+
+message ListCoursesRequest {
+  string category_tips = 1;  // 分类提示过滤（可选），相同category_tips的课程可归入同一表格
+  bool published_only = 2; // 是否仅返回已发布课程 ([required])
+  uint32 page_size = 3;    // 每页数量
+  string page_token = 4;   // 分页游标
+}
+
+message ListCoursesResponse {
+  repeated CourseSummary courses = 1; // 课程列表
+  string next_page_token = 2;  // 下一页游标
+}
+
+message PublishCourseRequest {
+  string course_id = 1; // 待发布的课程版本ID ([required])
+  uint32 version = 2;   // 乐观锁版本号 ([required])
+}
+
+message PublishCourseResponse {
+  bool success = 1; // 是否成功
+}
+
+// ==================== 课程资料 RPC messages ====================
+
+message CreateCourseMaterialRequest {
+  string material_id = 1;        // 资料ID ULID (必填，外部指定)
+  string course_id = 2;          // 所属课程ID ([required])
+  string title = 3;              // 资料标题 ([required])
+  MaterialType material_type = 4; // 资料类型 ([required])
+  string description = 5;        // 资料描述
+  string file_object_key = 6;    // 文件S3对象key
+  uint64 file_size = 7;          // 文件大小（字节）
+  uint32 sort_order = 8;         // 排序序号 ([required])
+  string file_hash = 9;          // 资料文件SHA256哈希
+}
+
+message CreateCourseMaterialResponse {
+  string material_id = 1; // 创建的资料ID
+}
+
+message UpdateCourseMaterialRequest {
+  string material_id = 1;        // 资料ID ([required])
+  string title = 2;              // 资料标题 ([required])
+  MaterialType material_type = 3; // 资料类型 (必填，已发布课程不可修改)
+  string description = 4;        // 资料描述
+  string file_object_key = 5;    // 文件S3对象key
+  uint64 file_size = 6;          // 文件大小（字节）
+  uint32 sort_order = 7;         // 排序序号 (必填，已发布课程不可修改)
+  uint32 version = 8;            // 乐观锁版本号 ([required])
+  string file_hash = 9;          // 资料文件SHA256哈希
+}
+
+message UpdateCourseMaterialResponse {
+  bool success = 1; // 是否成功
+}
+
+message DeleteCourseMaterialRequest {
+  string material_id = 1; // 资料ID ([required])
+  uint32 version = 2;     // 乐观锁版本号 ([required])
+}
+
+message DeleteCourseMaterialResponse {
+  bool success = 1; // 是否成功
+}
+
+message GetCourseMaterialRequest {
+  string material_id = 1; // 资料ID ([required])
+}
+
+message GetCourseMaterialResponse {
+  CourseMaterial material = 1; // 资料详情
+}
+
+message ListCourseMaterialsRequest {
+  string course_id = 1; // 课程ID ([required])
+}
+
+message ListCourseMaterialsResponse {
+  repeated CourseMaterialSummary materials = 1; // 资料列表
+}
+
+message ReorderCourseMaterialsRequest {
+  string course_id = 1;          // 课程ID ([required])
+  repeated ReorderItem items = 2; // 重排序项列表 ([required])
+}
+
+message ReorderCourseMaterialsResponse {
+  bool success = 1; // 是否成功
+}
+
+// ==================== 章节 RPC messages ====================
+
+message CreateChapterRequest {
+  string chapter_id = 1; // 章节ID ULID (必填，外部指定)
+  string course_id = 2;  // 所属课程ID ([required])
+  string title = 3;      // 章节标题 ([required])
+  uint32 sort_order = 4; // 排序序号 ([required])
+}
+
+message CreateChapterResponse {
+  string chapter_id = 1; // 创建的章节ID
+}
+
+message UpdateChapterRequest {
+  string chapter_id = 1; // 章节ID ([required])
+  string title = 2;      // 章节标题 ([required])
+  uint32 sort_order = 3; // 排序序号 (必填，已发布课程不可修改)
+  uint32 version = 4;    // 乐观锁版本号 ([required])
+}
+
+message UpdateChapterResponse {
+  bool success = 1; // 是否成功
+}
+
+message DeleteChapterRequest {
+  string chapter_id = 1; // 章节ID ([required])
+  uint32 version = 2;    // 乐观锁版本号 ([required])
+}
+
+message DeleteChapterResponse {
+  bool success = 1; // 是否成功
+}
+
+message GetChapterRequest {
+  string chapter_id = 1; // 章节ID ([required])
+}
+
+message GetChapterResponse {
+  Chapter chapter = 1; // 章节详情
+}
+
+message ListChaptersRequest {
+  string course_id = 1; // 课程ID ([required])
+}
+
+message ListChaptersResponse {
+  repeated ChapterSummary chapters = 1; // 章节列表（按sort_order排序）
+}
+
+message ReorderChaptersRequest {
+  string course_id = 1;          // 课程ID ([required])
+  repeated ReorderItem items = 2; // 重排序项列表 ([required])
+}
+
+message ReorderChaptersResponse {
+  bool success = 1; // 是否成功
+}
+
+// ==================== 课时 RPC messages ====================
+
+message CreateLessonRequest {
+  string lesson_id = 1;        // 课时ID ULID (必填，外部指定)
+  string chapter_id = 2;       // 所属章节ID ([required])
+  string title = 3;            // 课时标题 ([required])
+  uint32 sort_order = 4;       // 排序序号 ([required])
+  LessonType lesson_type = 5;  // 课时类型 ([required])
+  string body = 6;             // 文本内容（lesson_type=text时必填）
+  string media_object_key = 7; // 媒体文件S3对象key（video/pdf/image/audio/file类型时必填）
+  string external_url = 8;     // 外部链接URL（lesson_type=link时必填）
+  string video_provider = 9;   // 视频提供商
+  string video_stream_uid = 10; // 视频流唯一标识
+  string video_embed_code = 11; // 视频嵌入代码
+  string meta_json = 12;       // 扩展元数据JSON
+  string media_file_hash = 13; // 媒体文件SHA256哈希
+}
+
+message CreateLessonResponse {
+  string lesson_id = 1; // 创建的课时ID
+}
+
+message UpdateLessonRequest {
+  string lesson_id = 1;        // 课时ID ([required])
+  string title = 2;            // 课时标题 ([required])
+  uint32 sort_order = 3;       // 排序序号 (必填，已发布课程不可修改)
+  LessonType lesson_type = 4;  // 课时类型 (必填，已发布课程不可修改)
+  string body = 5;             // 文本内容
+  string media_object_key = 6; // 媒体文件S3对象key
+  string external_url = 7;     // 外部链接URL
+  string video_provider = 8;   // 视频提供商
+  string video_stream_uid = 9; // 视频流唯一标识
+  string video_embed_code = 10; // 视频嵌入代码
+  string meta_json = 11;       // 扩展元数据JSON
+  uint32 version = 12;         // 乐观锁版本号 ([required])
+  string media_file_hash = 13; // 媒体文件SHA256哈希
+}
+
+message UpdateLessonResponse {
+  bool success = 1; // 是否成功
+}
+
+message DeleteLessonRequest {
+  string lesson_id = 1; // 课时ID ([required])
+  uint32 version = 2;   // 乐观锁版本号 ([required])
+}
+
+message DeleteLessonResponse {
+  bool success = 1; // 是否成功
+}
+
+message GetLessonRequest {
+  string lesson_id = 1; // 课时ID ([required])
+}
+
+message GetLessonResponse {
+  Lesson lesson = 1; // 课时详情
+}
+
+message ListLessonsRequest {
+  string chapter_id = 1; // 章节ID ([required])
+}
+
+message ListLessonsResponse {
+  repeated LessonSummary lessons = 1; // 课时列表（按sort_order排序）
+}
+
+message ReorderLessonsRequest {
+  string chapter_id = 1;        // 章节ID ([required])
+  repeated ReorderItem items = 2; // 重排序项列表 ([required])
+}
+
+message ReorderLessonsResponse {
+  bool success = 1; // 是否成功
+}
+
+// ==================== 前置条件 RPC messages ====================
+
+message CreatePrerequisiteRequest {
+  string prerequisite_id = 1;           // 前置条件ID ULID (必填，外部指定)
+  EntityType required_entity_type = 2;  // 前置实体类型 ([required])
+  string required_entity_id = 3;        // 前置实体ID ([required])
+  PrerequisiteResult required_result = 4; // 前置要求结果 ([required])
+  EntityType target_entity_type = 5;    // 目标实体类型 ([required])
+  string target_entity_id = 6;          // 目标实体ID ([required])
+}
+
+message CreatePrerequisiteResponse {
+  string prerequisite_id = 1; // 创建的前置条件ID
+}
+
+message UpdatePrerequisiteRequest {
+  string prerequisite_id = 1;           // 前置条件ID ([required])
+  EntityType required_entity_type = 2;  // 前置实体类型 ([required])
+  string required_entity_id = 3;        // 前置实体ID ([required])
+  PrerequisiteResult required_result = 4; // 前置要求结果 ([required])
+  EntityType target_entity_type = 5;    // 目标实体类型 ([required])
+  string target_entity_id = 6;          // 目标实体ID ([required])
+  uint32 version = 7;                   // 乐观锁版本号 ([required])
+}
+
+message UpdatePrerequisiteResponse {
+  bool success = 1; // 是否成功
+}
+
+message DeletePrerequisiteRequest {
+  string prerequisite_id = 1; // 前置条件ID ([required])
+  uint32 version = 2;         // 乐观锁版本号 ([required])
+}
+
+message DeletePrerequisiteResponse {
+  bool success = 1; // 是否成功
+}
+
+message GetPrerequisiteRequest {
+  string prerequisite_id = 1; // 前置条件ID ([required])
+}
+
+message GetPrerequisiteResponse {
+  Prerequisite prerequisite = 1; // 前置条件详情
+}
+
+message ListPrerequisitesRequest {
+  EntityType target_entity_type = 1; // 目标实体类型 ([required])
+  string target_entity_id = 2;       // 目标实体ID ([required])
+}
+
+message ListPrerequisitesResponse {
+  repeated PrerequisiteSummary prerequisites = 1; // 前置条件列表
+}
+
+// ==================== 测验 RPC messages ====================
+
+message CreateQuizRequest {
+  reserved 8, 9;
+  string quiz_id = 1;               // 测验ID ULID (必填，外部指定)
+  QuizzableType quizzable_type = 2; // 所属实体类型 ([required])
+  string quizzable_id = 3;          // 所属实体ID ([required])
+  string title = 4;                 // 测验标题 ([required])
+  string description = 5;           // 测验说明
+  uint32 passing_score = 6;         // 及格分数（百分比 0-100，默认70） ([required])
+  uint32 time_limit = 7;            // 时间限制（分钟，0表示不限时） ([required])
+  // uint32 max_attempts = 8;          // 最大尝试次数（0表示不限次） ([required]) (removed)
+  // bool allow_retake = 9;            // 是否允许通过后重考 (removed)
+  bool randomize_questions = 10;    // 是否随机排列题目
+}
+
+message CreateQuizResponse {
+  string quiz_id = 1; // 创建的测验ID
+}
+
+message UpdateQuizRequest {
+  reserved 6, 7;
+  string quiz_id = 1;             // 测验ID ([required])
+  string title = 2;               // 测验标题 ([required])
+  string description = 3;         // 测验说明
+  uint32 passing_score = 4;       // 及格分数 (必填，已发布课程不可修改)
+  uint32 time_limit = 5;          // 时间限制 (必填，已发布课程不可修改)
+  // uint32 max_attempts = 6;        // 最大尝试次数 (必填，已发布课程不可修改) (removed)
+  // bool allow_retake = 7;          // 是否允许通过后重考（已发布课程不可修改） (removed)
+  bool randomize_questions = 8;   // 是否随机排列题目（已发布课程不可修改）
+  uint32 version = 10;            // 乐观锁版本号 ([required])
+}
+
+message UpdateQuizResponse {
+  bool success = 1; // 是否成功
+}
+
+message DeleteQuizRequest {
+  string quiz_id = 1; // 测验ID ([required])
+  uint32 version = 2; // 乐观锁版本号 ([required])
+}
+
+message DeleteQuizResponse {
+  bool success = 1; // 是否成功
+}
+
+message GetQuizRequest {
+  string quiz_id = 1; // 测验ID ([required])
+}
+
+message GetQuizResponse {
+  Quiz quiz = 1; // 测验详情
+}
+
+message ListQuizzesRequest {
+  QuizzableType quizzable_type = 1; // 所属实体类型 ([required])
+  string quizzable_id = 2;          // 所属实体ID ([required])
+}
+
+message ListQuizzesResponse {
+  repeated QuizSummary quizzes = 1; // 测验列表
+}
+
+// ==================== 测验题目 RPC messages ====================
+
+message CreateQuizQuestionRequest {
+  string question_id = 1;            // 题目ID ULID (必填，外部指定)
+  string quiz_id = 2;                // 所属测验ID ([required])
+  string question_text = 3;          // 题目内容 ([required])
+  QuizQuestionType question_type = 4; // 题目类型 ([required])
+  uint32 points = 5;                 // 分值 ([required])
+  uint32 sort_order = 6;             // 排序序号 ([required])
+  bool is_required = 7;              // 是否必答
+  string media_items_json = 8;       // 媒体附件JSON数组 ([required])
+}
+
+message CreateQuizQuestionResponse {
+  string question_id = 1; // 创建的题目ID
+}
+
+message UpdateQuizQuestionRequest {
+  string question_id = 1;            // 题目ID ([required])
+  string question_text = 2;          // 题目内容 ([required])
+  QuizQuestionType question_type = 3; // 题目类型 (必填，已发布课程不可修改)
+  uint32 points = 4;                 // 分值 (必填，已发布课程不可修改)
+  uint32 sort_order = 5;             // 排序序号 (必填，已发布课程不可修改)
+  bool is_required = 6;              // 是否必答（已发布课程不可修改）
+  string media_items_json = 7;       // 媒体附件JSON数组 ([required])
+  uint32 version = 8;                // 乐观锁版本号 ([required])
+}
+
+message UpdateQuizQuestionResponse {
+  bool success = 1; // 是否成功
+}
+
+message DeleteQuizQuestionRequest {
+  string question_id = 1; // 题目ID ([required])
+  uint32 version = 2;     // 乐观锁版本号 ([required])
+}
+
+message DeleteQuizQuestionResponse {
+  bool success = 1; // 是否成功
+}
+
+message GetQuizQuestionRequest {
+  string question_id = 1; // 题目ID ([required])
+}
+
+message GetQuizQuestionResponse {
+  QuizQuestion question = 1; // 题目详情
+}
+
+message ListQuizQuestionsRequest {
+  string quiz_id = 1; // 测验ID ([required])
+}
+
+message ListQuizQuestionsResponse {
+  repeated QuizQuestionSummary questions = 1; // 题目列表（若randomize_questions=true则随机排列）
+}
+
+message ReorderQuizQuestionsRequest {
+  string quiz_id = 1;             // 测验ID ([required])
+  repeated ReorderItem items = 2; // 重排序项列表 ([required])
+}
+
+message ReorderQuizQuestionsResponse {
+  bool success = 1; // 是否成功
+}
+
+// ==================== 测验选项 RPC messages ====================
+
+message CreateQuizOptionRequest {
+  string option_id = 1;  // 选项ID ULID (必填，外部指定)
+  string question_id = 2; // 所属题目ID ([required])
+  string option_text = 3; // 选项内容 ([required])
+  bool is_correct = 4;    // 是否为正确答案 ([required])
+  uint32 sort_order = 5;  // 排序序号 ([required])
+}
+
+message CreateQuizOptionResponse {
+  string option_id = 1; // 创建的选项ID
+}
+
+message UpdateQuizOptionRequest {
+  string option_id = 1;  // 选项ID ([required])
+  string option_text = 2; // 选项内容 ([required])
+  bool is_correct = 3;    // 是否为正确答案 (必填，已发布课程不可修改)
+  uint32 sort_order = 4;  // 排序序号 (必填，已发布课程不可修改)
+  uint32 version = 5;     // 乐观锁版本号 ([required])
+}
+
+message UpdateQuizOptionResponse {
+  bool success = 1; // 是否成功
+}
+
+message DeleteQuizOptionRequest {
+  string option_id = 1; // 选项ID ([required])
+  uint32 version = 2;   // 乐观锁版本号 ([required])
+}
+
+message DeleteQuizOptionResponse {
+  bool success = 1; // 是否成功
+}
+
+message GetQuizOptionRequest {
+  string option_id = 1; // 选项ID ([required])
+}
+
+message GetQuizOptionResponse {
+  QuizOption option = 1; // 选项详情
+}
+
+message ListQuizOptionsRequest {
+  string question_id = 1; // 题目ID ([required])
+}
+
+message ListQuizOptionsResponse {
+  repeated QuizOptionSummary options = 1; // 选项列表（按sort_order排序）
+}
+
+message ReorderQuizOptionsRequest {
+  string question_id = 1;         // 题目ID ([required])
+  repeated ReorderItem items = 2; // 重排序项列表 ([required])
+}
+
+message ReorderQuizOptionsResponse {
+  bool success = 1; // 是否成功
+}
+
+// ==================== S3对象存储 RPC messages ====================
+
+message ListObjectsRequest {
+  string prefix = 1;     // S3对象key前缀过滤
+  uint32 page_size = 2;  // 每页数量
+  string page_token = 3; // 分页游标
+  string bucket_type = 4; // 存储桶类型: private / public (默认 private)
+}
+
+message ListObjectsResponse {
+  string bucket_name = 1;            // 存储桶名称
+  repeated BucketObject objects = 2; // 对象列表
+  string next_page_token = 3;        // 下一页游标
+}
+
+message CreateUploadURLRequest {
+  UploadType upload_type = 1; // 上传类型，决定S3路径和校验规则 ([required])
+  string file_name = 2;       // 文件名 ([required])
+  string content_type = 3;    // 文件MIME类型 ([required])
+  string course_id = 4;       // 课程ID ([required])
+  string chapter_id = 5;      // 章节ID（上传课时素材时必填）
+  string material_id = 6;     // 资料ID（上传课程资料时必填）
+  string lesson_id = 7;       // 课时ID（上传课时素材时必填）
+  string quiz_id = 8;         // 测验ID（上传测验素材时必填）
+  string file_hash = 9;       // 文件SHA256哈希 ([required])
+  string pack_id = 10;                // 资源包ID（上传资源包封面图/文件时必填）
+  string resource_pack_file_id = 11;  // 资源包文件ID（上传资源包文件时必填）
+}
+
+message CreateUploadURLResponse {
+  string bucket_name = 1; // 存储桶名称
+  string object_key = 2;  // 对象key（上传时需使用此key）
+  string upload_url = 3;  // 预签名上传URL（15分钟有效）
+  string expires_at = 4;  // URL过期时间 (UTC, RFC3339)
+  map<string, string> signed_headers = 5; // 预签名上传需要附带的 HTTP Header
+}
+
+message CreateViewURLRequest {
+  string object_key = 1; // S3对象key ([required])
+}
+
+message CreateViewURLResponse {
+  string bucket_name = 1; // 存储桶名称
+  string object_key = 2;  // 对象key
+  string view_url = 3;    // 预签名查看/下载URL（15分钟有效）
+  string expires_at = 4;  // URL过期时间 (UTC, RFC3339)
+}
+
+message GrantCourseAccessPermissionAdminRequest {
+  string course_id = 1;     // 课程 ID (ULID) [required]
+  string candidate_id = 2;  // 考生 ID (ULID) [required]
+  string biz_unit = 3;      // 业务单元/系统标识 (必填，对应 V3) [required]
+  string operator_id = 4;   // 审计：操作人ID (必填) [required]
+  string reason = 5;        // 审计：操作原因 [required]
+}
+
+message GrantCourseAccessPermissionAdminResponse {
+  bool success = 1;
+}
+
+message RevokeCourseAccessPermissionAdminRequest {
+  string course_id = 1;     // 课程 ID (ULID) [required]
+  string candidate_id = 2;  // 考生 ID (ULID) [required]
+  string biz_unit = 3;      // 业务单元/系统标识 (必填，对应 V3) [required]
+  string operator_id = 4;   // 审计：操作人ID (必填) [required]
+  string reason = 5;        // 审计：操作原因 [required]
+}
+
+message RevokeCourseAccessPermissionAdminResponse {
+  bool success = 1;
+}
+
+// ==================== 考生端 RPC messages ====================
+
+message EnrollCandidateCourseRequest {
+  string candidate_id = 1; // 考生ID ([required])
+  string course_id = 2;    // 课程版本ID (必填，课程必须为Active状态)
+  string biz_unit = 3;     // 触发报名的业务单元：gmall(商城)/gexam(考试)等 ([required])
+  string ref_entity_type = 4;
+  string ref_entity_id = 5;
+}
+
+message EnrollCandidateCourseResponse {
+  string enrollment_id = 1; // 选课记录ID
+  string status = 2;        // 选课状态：learning(学习中)/completed(已完成)
+  string joined_at = 3;     // 加入时间 (UTC, RFC3339)
+}
+
+message BatchEnrollCandidateCoursesRequest {
+  string candidate_id = 1; // 考生ID ([required])
+  repeated string course_ids = 2; // 课程版本ID 列表 (必填)
+  string biz_unit = 3;     // 触发报名的业务单元：gmall(商城)/gexam(考试)等 ([required])
+  string ref_entity_type = 4;
+  string ref_entity_id = 5;
+}
+
+message BatchEnrollResult {
+  string course_id = 1;
+  string enrollment_id = 2;
+  string status = 3;
+  string joined_at = 4;
+}
+
+message BatchEnrollCandidateCoursesResponse {
+  repeated BatchEnrollResult results = 1;
+}
+
+message CompleteLessonLearningRequest {
+  string candidate_id = 1; // 考生ID ([required])
+  string lesson_id = 2;    // 课时ID ([required])
+}
+
+message CompleteLessonLearningResponse {
+  string lesson_status = 1;        // 课时状态：learning(学习中)/testing(待测验)/completed(已完成)
+  bool course_completed = 2;       // 本次课时完成是否触发了课程结业
+  string course_progress_status = 3; // 课程状态：learning(学习中)/completed(已完成)
+  string completed_at = 4;         // 完成时间 (UTC, RFC3339)
+}
+
+message ListCandidateEnrollmentsRequest {
+  string candidate_id = 1; // 考生ID ([required])
+  string status = 2;       // 状态过滤：learning(学习中)/completed(已完成)/空(全部) ([required])
+  uint32 page_size = 3;    // 每页数量
+  string page_token = 4;   // 分页游标
+}
+
+message CandidateEnrollmentSummary {
+  string enrollment_id = 1;     // 选课记录ID
+  string course_id = 2;         // 课程版本ID
+  string course_title = 3;      // 课程标题（辅助前端呈现）
+  string status = 4;            // 学习状态：learning/completed
+  uint32 progress_percentage = 5; // 学习进度百分比（动态计算）
+  string joined_at = 6;         // 加入时间 (UTC, RFC3339)
+  string completed_at = 7;      // 完成时间 (UTC, RFC3339)
+}
+
+message ListCandidateEnrollmentsResponse {
+  repeated CandidateEnrollmentSummary enrollments = 1; // 选课记录列表
+  string next_page_token = 2;                          // 下一页游标
+}
+
+message GetCandidateEnrollmentDetailRequest {
+  string enrollment_id = 1; // 选课记录ID
+  string candidate_id = 2;  // 考生ID (BFF 传入校验所有权)
+}
+
+message GetCandidateEnrollmentDetailResponse {
+  string enrollment_id = 1;             // 选课记录ID
+  string candidate_id = 2;              // 考生ID
+  string course_id = 3;                 // 课程版本ID
+  string status = 4;                    // 学习状态
+  uint32 progress_percentage = 5;       // 学习进度百分比
+  uint32 total_lessons = 6;             // 课程总课时数
+  uint32 completed_lessons = 7;         // 已完成课时数
+  repeated string completed_lesson_ids = 8; // 已完成课时ID列表
+  uint32 total_quizzes = 9;             // 课程总测验数
+  uint32 passed_quizzes = 10;           // 已通过测验数
+  repeated string passed_quiz_ids = 11; // 已通过测验ID列表
+  string joined_at = 12;                // 加入时间 (UTC, RFC3339)
+  string completed_at = 13;             // 完成时间 (UTC, RFC3339)
+}
+
+message ListCourseEnrollmentsForAdminRequest {
+  string course_id = 1;  // 课程版本ID ([required])
+  string status = 2;     // 状态过滤 ([required])
+  uint32 page_size = 3;  // 每页数量
+  string page_token = 4; // 分页游标
+}
+
+message CourseEnrollmentSummaryForAdmin {
+  string enrollment_id = 1;     // 选课记录ID
+  string candidate_id = 2;      // 考生ID
+  string status = 3;            // 学习状态
+  uint32 progress_percentage = 4; // 学习进度百分比（动态计算）
+  string joined_at = 5;         // 加入时间 (UTC, RFC3339)
+  string completed_at = 6;      // 完成时间 (UTC, RFC3339)
+}
+
+message ListCourseEnrollmentsForAdminResponse {
+  repeated CourseEnrollmentSummaryForAdmin enrollments = 1; // 选课记录列表
+  string next_page_token = 2;                               // 下一页游标
+}
+
+message GetCandidateProgressForAdminRequest {
+  string candidate_id = 1; // 考生ID ([required])
+  string course_id = 2;    // 课程版本ID ([required])
+}
+
+message GetCandidateProgressForAdminResponse {
+  string enrollment_id = 1;             // 选课记录ID
+  string candidate_id = 2;              // 考生ID
+  string course_id = 3;                 // 课程版本ID
+  string status = 4;                    // 学习状态
+  uint32 progress_percentage = 5;       // 学习进度百分比
+  repeated string completed_lesson_ids = 6; // 已完成课时ID列表
+  repeated string passed_quiz_ids = 7;  // 已通过测验ID列表
+  string joined_at = 8;                 // 加入时间 (UTC, RFC3339)
+  string completed_at = 9;              // 完成时间 (UTC, RFC3339)
+}
+
+// ==================== 完整课程树形结构（用于考生端展示） ====================
+
+message QuizOptionDetail {
+  QuizOption option = 1; // 选项详情
+}
+
+message QuizQuestionDetail {
+  QuizQuestion question = 1;     // 题目详情
+  repeated QuizOption options = 2; // 题目下的所有选项
+}
+
+message QuizDetail {
+  Quiz quiz = 1;                       // 测验详情
+  repeated QuizQuestionDetail questions = 2; // 测验下的所有题目（含选项）
+}
+
+message LessonDetail {
+  Lesson lesson = 1;               // 课时详情
+  repeated QuizDetail quizzes = 2; // 课时下的所有测验
+}
+
+message ChapterDetail {
+  Chapter chapter = 1;               // 章节详情
+  repeated LessonDetail lessons = 2; // 章节下的所有课时（含测验）
+  repeated QuizDetail quizzes = 3;   // 章节下的所有测验（章末测试）
+}
+
+message CompleteCourse {
+  Course course = 1;                    // 课程详情
+  repeated CourseMaterial materials = 2; // 课程资料列表
+  repeated ChapterDetail chapters = 3;  // 章节列表（含课时、测验的完整树）
+  repeated QuizDetail quizzes = 4;      // 课程级测验列表（期末考试）
+  SupplementaryMaterial supplementary_material = 5; // 辅助资料（外部链接等补充资源）
+}
+
+message SupplementaryMaterial {
+  string material_id = 1;
+  string course_id = 2;
+  string kind = 3;           // 资料种类标识，由客户端定义（如 "cfta_supplementary"），不能为空
+  string data_json = 4;      // 任意 JSON 结构，服务端不解析，透传给前端
+  uint32 version = 5;
+  string created_at = 6;
+  string updated_at = 7;
+}
+
+message GetCompleteCourseRequest {
+  string course_id = 1; // 课程版本ID ([required])
+}
+
+message GetCompleteCourseResponse {
+  CompleteCourse complete_course = 1; // 完整课程树形结构
+}
+
+// ==================== 辅助资料 RPC messages ====================
+
+message CreateCourseSupplementaryMaterialRequest {
+  string material_id = 1;  // ULID (required, externally assigned)
+  string course_id = 2;    // course ID (required)
+  string kind = 3;         // 资料种类标识 (required, non-empty)
+  string data_json = 4;    // JSON 内容 (required)
+}
+
+message CreateCourseSupplementaryMaterialResponse {
+  SupplementaryMaterial material = 1;
+}
+
+message UpdateCourseSupplementaryMaterialRequest {
+  string material_id = 1;  // material ID (required)
+  string kind = 2;         // 资料种类标识 (required, non-empty)
+  string data_json = 3;    // JSON 内容 (required)
+  uint32 version = 4;      // optimistic lock (required)
+}
+
+message UpdateCourseSupplementaryMaterialResponse {
+  SupplementaryMaterial material = 1;
+}
+
+message DeleteCourseSupplementaryMaterialRequest {
+  string material_id = 1;  // material ID (required)
+  uint32 version = 2;      // optimistic lock (required)
+}
+
+message DeleteCourseSupplementaryMaterialResponse {
+  bool success = 1;
+}
+
+message GetCourseSupplementaryMaterialRequest {
+  string course_id = 1;  // course ID (required)
+}
+
+message GetCourseSupplementaryMaterialResponse {
+  SupplementaryMaterial material = 1;
+}
+
+// ==================== 考生答题 RPC messages ====================
+
+message TakeQuizRequest {
+  string candidate_id = 1; // 考生ID ([required])
+  string quiz_id = 2;      // 测验ID ([required])
+}
+
+message TakeQuizResponse {
+  string attempt_id = 1; // 答题记录ID
+  string status = 2;     // 答题状态：in_progress(进行中)
+}
+
+message QuizOptionForCandidate {
+  string option_id = 1;  // 选项ID
+  string option_text = 2; // 选项内容（不包含is_correct，考生不可见正确答案）
+  uint32 sort_order = 3;  // 排序序号
+}
+
+message QuizQuestionForCandidate {
+  string question_id = 1;                  // 题目ID
+  string question_text = 2;                // 题目内容
+  QuizQuestionType question_type = 3;      // 题目类型
+  uint32 points = 4;                       // 分值
+  uint32 sort_order = 5;                   // 排序序号
+  repeated QuizOptionForCandidate options = 6; // 选项列表（不含正确答案标记）
+}
+
+message GetCandidateQuizPaperRequest {
+  string candidate_id = 1; // 考生ID ([required])
+  string attempt_id = 2;   // 答题记录ID ([required])
+}
+
+message GetCandidateQuizPaperResponse {
+  string attempt_id = 1;                       // 答题记录ID
+  string quiz_id = 2;                          // 测验ID
+  string title = 3;                            // 测验标题
+  string description = 4;                      // 测验说明
+  uint32 time_limit = 5;                       // 时间限制（分钟）
+  repeated QuizQuestionForCandidate questions = 6; // 题目列表（不含正确答案）
+}
+
+message QuizAnswerSubmission {
+  string question_id = 1;           // 题目ID ([required])
+  repeated string selected_option_ids = 2; // 考生选择的选项ID列表（单选为1个，多选可多个）
+}
+
+message SubmitQuizRequest {
+  string candidate_id = 1;                   // 考生ID ([required])
+  string attempt_id = 2;                     // 答题记录ID ([required])
+  repeated QuizAnswerSubmission submissions = 3; // 考生作答提交列表 ([required])
+}
+
+message SubmitQuizResponse {
+  string attempt_id = 1;   // 答题记录ID
+  string status = 2;       // 答题状态：completed(已完成)
+  uint32 score = 3;        // 实际得分
+  uint32 max_score = 4;    // 满分
+  bool is_passed = 5;      // 是否及格（score/max_score >= passing_score%）
+  string completed_at = 6; // 完成时间 (UTC, RFC3339)
+  bool course_completed = 7; // 是否触发了课程结业
+  string course_status = 8;  // 课程状态：learning(学习中)/completed(已完成)
+}
+
+// ==================== 已损坏资产（管理员排查用） ====================
+
+message BrokenAssetDetail {
+  string object_key = 1;    // S3对象key
+  string asset_type = 2;    // 资产类型：thumbnail(封面)/material(资料)/lesson(课时素材)
+  string status = 3;        // 资产状态：pending(待检查)/active(正常)/broken(已损坏)
+  string error_message = 4; // 错误详情（status=broken时）
+  string reconciled_at = 5; // 最后对账时间 (UTC, RFC3339)
+  string created_at = 6;    // 创建时间 (UTC, RFC3339)
+  string updated_at = 7;    // 更新时间 (UTC, RFC3339)
+  string file_hash = 16;    // 资产文件SHA256哈希
+
+  // 关联上下文信息（方便快速定位问题）
+  string course_id = 8;     // 所属课程ID
+  string course_title = 9;  // 所属课程标题
+  string chapter_id = 10;   // 所属章节ID
+  string chapter_title = 11; // 所属章节标题
+  string lesson_id = 12;    // 所属课时ID
+  string lesson_title = 13; // 所属课时标题
+  string material_id = 14;  // 所属资料ID
+  string material_title = 15; // 所属资料标题
+}
+
+message ListBrokenAssetsRequest {
+  uint32 page_size = 1;  // 每页数量
+  string page_token = 2; // 分页游标
+  string asset_type = 3; // 资产类型过滤：thumbnail/material/lesson
+}
+
+message ListBrokenAssetsResponse {
+  repeated BrokenAssetDetail assets = 1; // 已损坏资产列表
+  string next_page_token = 2;            // 下一页游标
+}
+
+// 批量导入测验请求，quiz_json 包含完整的测验、题目和选项
+message ImportQuizRequest {
+  QuizzableType quizzable_type = 1; // 挂载到 course / chapter / lesson [required]
+  string quizzable_id = 2;          // 目标实体 ID [required]
+  string quiz_json = 3;             // 完整测验 JSON 字符串 [required]
+}
+
+message ImportQuizResponse {
+  string quiz_id = 1;       // 生成的测验 ID (ULID)
+  int32 question_count = 2; // 创建的题目数量
+  int32 option_count = 3;   // 创建的选项数量
+}
+
+// 批量导入课程请求，course_json 包含章节、课时、资料（不含测验）
+message ImportCourseRequest {
+  string category_tips = 1;  // 分类提示，客户端按相同值分组展示，最长64字符 [optional]
+  string course_json = 2;  // 完整课程 JSON 字符串 [required]
+}
+
+message ImportCourseResponse {
+  string course_id = 1;     // 生成的课程 ID (ULID)
+  string course_gpath = 2;   // 生成的课程业务唯一路径
+  int32 chapter_count = 3;  // 创建的章节数量
+  int32 lesson_count = 4;   // 创建的课时数量
+  int32 material_count = 5; // 创建的资料数量
+}
+
+// ==================== 新增的详细信息与摘要相关实体与消息 ====================
+
+message GetCourseSummaryResponse {
+  CourseSummary course = 1;
+}
+
+message CourseSummary {
+  string course_id = 1;             // 课程版本唯一ID (ULID)，每次编辑生成新ID
+  string category_tips = 2;         // 分类提示，最长64字符
+  string title = 3;                 // 课程标题
+  string thumbnail_object_key = 4;  // 课程封面图S3对象key
+  uint32 duration_min = 5;          // 课程总时长（分钟）
+  bool certification_enabled = 6;   // 是否启用结课认证
+  string certification_def_id = 7;  // 资格定义ID
+  bool is_published = 8;            // 是否已发布
+  string published_at = 9;         // 发布时间 (UTC, RFC3339)
+  uint32 version = 10;              // 乐观锁版本号
+  string created_at = 11;           // 创建时间 (UTC, RFC3339)
+  string updated_at = 12;           // 更新时间 (UTC, RFC3339)
+  string course_gpath = 13;          // 业务唯一路径
+  string status = 14;               // 版本状态
+  bool is_current = 15;             // 是否为当前生效版本
+  string thumbnail_file_hash = 16;  // 课程封面图SHA256哈希
+}
+
+message CourseMaterialSummary {
+  string material_id = 1;        // 资料唯一ID (ULID)
+  string course_id = 2;          // 所属课程ID
+  string title = 3;              // 资料标题
+  MaterialType material_type = 4; // 资料类型
+  string file_object_key = 5;    // 文件S3对象key
+  uint64 file_size = 6;          // 文件大小（字节）
+  uint32 sort_order = 7;         // 排序序号
+  uint32 version = 8;            // 乐观锁版本号
+  string created_at = 9;        // 创建时间 (UTC, RFC3339)
+  string updated_at = 10;        // 更新时间 (UTC, RFC3339)
+  string file_hash = 11;         // 资料文件SHA256哈希
+}
+
+message ChapterSummary {
+  string chapter_id = 1;  // 章节唯一ID (ULID)
+  string course_id = 2;   // 所属课程ID
+  string title = 3;       // 章节标题
+  uint32 sort_order = 4;  // 排序序号
+  uint32 version = 5;     // 乐观锁版本号
+  string created_at = 6;  // 创建时间
+  string updated_at = 7;  // 更新时间
+}
+
+message LessonSummary {
+  string lesson_id = 1;         // 课时唯一ID (ULID)
+  string chapter_id = 2;        // 所属章节ID
+  string title = 3;             // 课时标题
+  uint32 sort_order = 4;        // 排序序号
+  LessonType lesson_type = 5;   // 课时类型
+  string media_object_key = 6;  // 媒体文件S3对象key
+  string external_url = 7;      // 外部链接URL
+  string video_provider = 8;    // 视频提供商
+  string video_stream_uid = 9;  // 视频流在提供商平台的唯一标识
+  uint32 version = 10;          // 乐观锁版本号
+  string created_at = 11;       // 创建时间 (UTC, RFC3339)
+  string updated_at = 12;       // 更新时间 (UTC, RFC3339)
+  string media_file_hash = 13;  // 媒体文件SHA256哈希
+  string chapter_title = 14;    // 所属章节标题
+}
+
+message PrerequisiteSummary {
+  string prerequisite_id = 1;            // 前置条件唯一ID (ULID)
+  EntityType required_entity_type = 2;   // 前置实体类型
+  string required_entity_id = 3;         // 前置实体ID
+  PrerequisiteResult required_result = 4; // 前置要求结果
+  EntityType target_entity_type = 5;     // 目标实体类型
+  string target_entity_id = 6;           // 目标实体ID
+  uint32 version = 7;                    // 乐观锁版本号
+  string created_at = 8;                 // 创建时间
+  string updated_at = 9;                 // 更新时间
+}
+
+message QuizSummary {
+  reserved 7, 8;
+  string quiz_id = 1;                // 测验唯一ID (ULID)
+  QuizzableType quizzable_type = 2;  // 所属实体类型
+  string quizzable_id = 3;           // 所属实体ID
+  string title = 4;                  // 测验标题
+  uint32 passing_score = 5;          // 及格分数
+  uint32 time_limit = 6;             // 时间限制
+  // uint32 max_attempts = 7;           // 最大尝试次数 (removed)
+  // bool allow_retake = 8;             // 是否允许通过后重考 (removed)
+  bool randomize_questions = 9;      // 是否随机排列题目顺序
+  uint32 version = 11;               // 乐观锁版本号
+  string created_at = 12;            // 创建时间
+  string updated_at = 13;            // 更新时间
+}
+
+message QuizQuestionSummary {
+  string question_id = 1;            // 题目唯一ID (ULID)
+  string quiz_id = 2;                // 所属测验ID
+  QuizQuestionType question_type = 3; // 题目类型
+  uint32 points = 4;                 // 分值
+  uint32 sort_order = 5;             // 排序序号
+  bool is_required = 6;              // 是否必答
+  uint32 version = 7;                // 乐观锁版本号
+  string created_at = 8;             // 创建时间
+  string updated_at = 9;             // 更新时间
+}
+
+message QuizOptionSummary {
+  string option_id = 1;    // 选项唯一ID (ULID)
+  string question_id = 2;  // 所属题目ID
+  bool is_correct = 3;     // 是否为正确答案
+  uint32 sort_order = 4;   // 排序序号
+  uint32 version = 5;      // 乐观锁版本号
+  string created_at = 6;   // 创建时间
+  string updated_at = 7;   // 更新时间
+}
+
+// 课程详情结构与COUNTS
+message CourseDetail {
+  Course course = 1;
+  uint32 chapter_count = 2;
+  uint32 lesson_count = 3;
+  uint32 quiz_count = 4;
+  uint32 material_count = 5;
+  uint32 enrollment_count = 6;
+  uint32 active_enrollment_count = 7;
+}
+
+message GetCourseDetailRequest {
+  string course_id = 1; // 课程ID [required]
+}
+
+message GetCourseDetailResponse {
+  CourseDetail course_detail = 1;
+}
+
+message GetCourseMaterialDetailResponse {
+  CourseMaterial material = 1;
+}
+
+message GetChapterDetailResponse {
+  Chapter chapter = 1;
+}
+
+message GetLessonDetailResponse {
+  Lesson lesson = 1;
+}
+
+message GetPrerequisiteDetailResponse {
+  Prerequisite prerequisite = 1;
+}
+
+message GetQuizDetailRequest {
+  string quiz_id = 1; // 测验ID [required]
+}
+
+message GetQuizDetailResponse {
+  QuizDetail quiz_detail = 1;
+}
+
+message GetQuizQuestionDetailResponse {
+  QuizQuestion question = 1;
+}
+
+message GetQuizOptionDetailResponse {
+  QuizOption option = 1;
+}
+
+// 课时进度接口
+message ListLessonProgressRequest {
+  string candidate_id = 1; // 考生ID [required]
+  string lesson_id = 2;    // 课时ID [optional]
+  string status = 3;       // 学习状态 [optional]
+  uint32 page_size = 4;    // 每页数量 [optional]
+  string page_token = 5;   // 分页游标 [optional]
+}
+
+message LessonProgressSummary {
+  string user_id = 1;
+  string lesson_id = 2;
+  string lesson_title = 3; // 冗余课时标题
+  string status = 4;
+  string started_at = 5;
+  string completed_at = 6;
+  string created_at = 7;
+  string updated_at = 8;
+}
+
+message ListLessonProgressResponse {
+  repeated LessonProgressSummary progress = 1;
+  string next_page_token = 2;
+}
+
+message GetLessonProgressDetailRequest {
+  string user_id = 1;      // 考生ID [required]
+  string lesson_id = 2;    // 课时ID [required]
+}
+
+message GetLessonProgressDetailResponse {
+  LessonProgress progress = 1;
+}
+
+// 测验作答记录接口
+message ListQuizAttemptsRequest {
+  string quiz_id = 1;      // 测验ID [required]
+  string user_id = 2;      // 用户ID [optional]
+  string status = 3;       // 作答状态 [optional]
+  uint32 page_size = 4;    // 每页数量 [optional]
+  string page_token = 5;   // 分页游标 [optional]
+}
+
+message QuizAttemptSummary {
+  string attempt_id = 1;
+  string quiz_id = 2;
+  string quiz_title = 3;   // 冗余测验标题
+  string user_id = 4;
+  string status = 5;
+  uint32 score = 6;
+  uint32 max_score = 7;
+  bool is_passed = 8;
+  uint32 time_taken = 9;
+  string started_at = 10;
+  string completed_at = 11;
+  uint32 version = 12;
+  string created_at = 13;
+  string updated_at = 14;
+}
+
+message ListQuizAttemptsResponse {
+  repeated QuizAttemptSummary attempts = 1;
+  string next_page_token = 2;
+}
+
+message GetQuizAttemptDetailRequest {
+  string attempt_id = 1; // 记录ID [required]
+}
+
+message QuizAttemptDetail {
+  string attempt_id = 1;
+  string quiz_id = 2;
+  string user_id = 3;
+  string status = 4;
+  uint32 score = 5;
+  uint32 max_score = 6;
+  bool is_passed = 7;
+  uint32 time_taken = 8;
+  string answers_json = 9; // 作答明细 JSON
+  string started_at = 10;
+  string completed_at = 11;
+  uint32 version = 12;
+  string created_at = 13;
+  string updated_at = 14;
+}
+
+message GetQuizAttemptDetailResponse {
+  QuizAttemptDetail attempt = 1;
+}
+
+// 章节进度接口
+message ListChapterProgressRequest {
+  string candidate_id = 1; // 考生ID [required]
+  string course_id = 2;    // 课程ID [required]
+  uint32 page_size = 3;    // 每页数量 [optional]
+  string page_token = 4;   // 分页游标 [optional]
+}
+
+message ChapterProgressSummary {
+  string candidate_id = 1;
+  string chapter_id = 2;
+  string chapter_title = 3; // 冗余章节标题
+  string course_id = 4;
+  uint32 total_lessons = 5;
+  uint32 total_quizzes = 6;
+  uint32 completed_lessons_count = 7;
+  uint32 passed_quizzes_count = 8;
+  string status = 9;
+  string created_at = 10;
+  string updated_at = 11;
+}
+
+message ListChapterProgressResponse {
+  repeated ChapterProgressSummary progress = 1;
+  string next_page_token = 2;
+}
+
+message GetChapterProgressDetailRequest {
+  string candidate_id = 1; // 考生ID [required]
+  string chapter_id = 2;   // 章节ID [required]
+}
+
+message GetChapterProgressDetailResponse {
+  ChapterProgress progress = 1;
+}
+
+// 资源对象接口
+message ListCourseAssetsRequest {
+  string status = 1;        // 对账状态 [optional]
+  string asset_type = 2;    // 资源类型 [optional]
+  string associated_id = 3; // 关联业务ID [optional]
+  uint32 page_size = 4;     // 每页数量 [optional]
+  string page_token = 5;    // 分页游标 [optional]
+}
+
+message CourseAssetSummary {
+  string object_key = 1;
+  string asset_type = 2;
+  string associated_id = 3;
+  string file_hash = 4;
+  string status = 5;
+  string error_message = 6;
+  string reconciled_at = 7;
+  uint32 version = 8;
+  string created_at = 9;
+  string updated_at = 10;
+}
+
+message ListCourseAssetsResponse {
+  repeated CourseAssetSummary assets = 1;
+  string next_page_token = 2;
+}
+
+message GetCourseAssetDetailRequest {
+  string object_key = 1;    // S3 Key [required]
+  string associated_id = 2; // 关联业务ID [required]
+}
+
+message GetCourseAssetDetailResponse {
+  CourseAsset asset = 1;
+}
+
+message CourseAsset {
+  string object_key = 1;
+  string asset_type = 2;
+  string associated_id = 3;
+  string file_hash = 4;
+  string status = 5;
+  string error_message = 6;
+  string reconciled_at = 7;
+  uint32 version = 8;
+  string created_at = 9;
+  string updated_at = 10;
+}
+
+// 反向查询前置依赖
+message ListPrerequisitesByRequiredEntityRequest {
+  EntityType required_entity_type = 1; // 前置实体类型 [required]
+  string required_entity_id = 2;       // 前置实体ID [required]
+  uint32 page_size = 3;                // 每页数量 [optional]
+  string page_token = 4;               // 分页游标 [optional]
+}
+
+message ListPrerequisitesByRequiredEntityResponse {
+  repeated Prerequisite prerequisites = 1;
+  string next_page_token = 2;
+}
+
+// 跨章节列出课程课时（便利接口）
+message ListLessonsByCourseRequest {
+  string course_id = 1;  // 课程ID [required]
+  uint32 page_size = 2;  // 每页数量 [optional]
+  string page_token = 3; // 分页游标 [optional]
+}
+
+message ListLessonsByCourseResponse {
+  repeated LessonSummary lessons = 1;
+  string next_page_token = 2;
+}
+
+// 选课记录查询与详情
+message ListCourseEnrollmentsRequest {
+  string candidate_id = 1; // 考生ID [optional]
+  string course_id = 2;    // 课程ID [optional]
+  string biz_unit = 3;     // 业务单元 [optional]
+  string status = 4;       // 学习状态 [optional]
+  uint32 page_size = 5;    // 每页数量 [optional]
+  string page_token = 6;   // 分页游标 [optional]
+}
+
+message ListCourseEnrollmentsResponse {
+  repeated CourseEnrollment enrollments = 1;
+  string next_page_token = 2;
+}
+
+message CourseEnrollment {
+  string enrollment_id = 1;
+  string candidate_id = 2;
+  string course_id = 3;
+  string biz_unit = 4;
+  uint32 total_lessons = 5;
+  uint32 total_quizzes = 6;
+  uint32 completed_lessons_count = 7;
+  uint32 passed_quizzes_count = 8;
+  uint32 progress_percentage = 9;
+  string status = 10;
+  string joined_at = 11;
+  string completed_at = 12;
+  uint32 version = 13;
+  string created_at = 14;
+  string updated_at = 15;
+  string ref_entity_type = 16;
+  string ref_entity_id = 17;
+}
+
+message GetCourseEnrollmentDetailRequest {
+  string enrollment_id = 1; // 选课记录ID [required]
+}
+
+message GetCourseEnrollmentDetailResponse {
+  CourseEnrollment enrollment = 1;
+}
+
+message LessonProgress {
+  string user_id = 1;
+  string lesson_id = 2;
+  string status = 3;
+  string started_at = 4;
+  string completed_at = 5;
+  uint32 version = 6;
+  string created_at = 7;
+  string updated_at = 8;
+}
+
+message ChapterProgress {
+  string candidate_id = 1;
+  string chapter_id = 2;
+  string course_id = 3;
+  uint32 total_lessons = 4;
+  uint32 total_quizzes = 5;
+  uint32 completed_lessons_count = 6;
+  uint32 passed_quizzes_count = 7;
+  string status = 8;
+  uint32 version = 9;
+  string created_at = 10;
+  string updated_at = 11;
+}
+
+message SyncCourseProgressRequest {
+  string candidate_id = 1; // 考生ID ([required])
+  string course_id = 2;    // 课程ID ([required])
+}
+
+message SyncCourseProgressResponse {
+  bool success = 1;                  // 是否同步成功
+  string course_status = 2;          // 课程状态：learning(学习中)/completed(已完成)
+  uint32 progress_percentage = 3;    // 进度百分比
+  uint32 completed_lessons_count = 4;// 已完成课时数
+  uint32 passed_quizzes_count = 5;   // 已通过测验数
+}
+
+// ==================== 考生端只读请求消息 ====================
+
+message GetCourseSummaryCandidateRequest {
+  string candidate_id = 1; // 考生 ID (ULID)
+  string course_id = 2;    // 课程 ID
+}
+
+message GetCourseDetailCandidateRequest {
+  string candidate_id = 1;
+  string course_id = 2;
+}
+
+message ListCoursesCandidateRequest {
+  string candidate_id = 1;
+  string category_tips = 2;
+  uint32 page_size = 3;
+  string page_token = 4;
+}
+
+message GetCourseMaterialCandidateRequest {
+  string candidate_id = 1;
+  string material_id = 2;
+}
+
+message ListCourseMaterialsCandidateRequest {
+  string candidate_id = 1;
+  string course_id = 2;
+}
+
+message GetChapterCandidateRequest {
+  string candidate_id = 1;
+  string chapter_id = 2;
+}
+
+message GetChapterDetailCandidateRequest {
+  string candidate_id = 1;
+  string chapter_id = 2;
+}
+
+message ListChaptersCandidateRequest {
+  string candidate_id = 1;
+  string course_id = 2;
+}
+
+message GetLessonCandidateRequest {
+  string candidate_id = 1;
+  string lesson_id = 2;
+}
+
+message GetLessonDetailCandidateRequest {
+  string candidate_id = 1;
+  string lesson_id = 2;
+}
+
+message ListLessonsCandidateRequest {
+  string candidate_id = 1;
+  string chapter_id = 2;
+}
+
+message ListLessonsByCourseCandidateRequest {
+  string candidate_id = 1;
+  string course_id = 2;
+  uint32 page_size = 3;
+  string page_token = 4;
+}
+
+message GetCompleteCourseCandidateRequest {
+  string candidate_id = 1;
+  string course_id = 2;
+}
+
+message GetQuizCandidateRequest {
+  string candidate_id = 1;
+  string quiz_id = 2;
+}
+
+message ListQuizzesCandidateRequest {
+  string candidate_id = 1;
+  QuizzableType quizzable_type = 2;
+  string quizzable_id = 3;
+}
+
+message CreateViewURLCandidateRequest {
+  string candidate_id = 1;
+  string object_key = 2;
+}
+
+message CreateResourcePackRequest {
+  string pack_id = 6;
+  string title = 1;
+  string description = 2;
+  string thumbnail_object_key = 3;
+  string thumbnail_file_hash = 4;
+  string respath = 5;
+  string icon = 7;
+  string category = 8;
+}
+
+message UpdateResourcePackRequest {
+  string pack_id = 1;
+  string title = 2;
+  string description = 3;
+  string thumbnail_object_key = 4;
+  string thumbnail_file_hash = 5;
+  string respath = 6;
+  string status = 7;
+  uint32 version = 8;
+  string icon = 9;
+  string category = 10;
+}
+
+message DeleteResourcePackRequest {
+  string pack_id = 1;
+  uint32 version = 2;
+}
+
+message DeleteResourcePackResponse {
+  bool success = 1;
+}
+
+message GetResourcePackRequest {
+  string pack_id = 1;
+}
+
+message ListResourcePacksRequest {
+  uint32 page_size = 1;
+  string page_token = 2;
+  string status = 3;
+}
+
+message ListResourcePacksResponse {
+  repeated ResourcePack packs = 1;
+  string next_page_token = 2;
+}
+
+message CreateResourcePackFileRequest {
+  string file_id = 13;
+  string pack_id = 1;
+  string title = 2;
+  string description = 3;
+  string thumbnail_object_key = 4;
+  string thumbnail_file_hash = 5;
+  ResourcePackFileType file_type = 6;
+  string file_name = 7;
+  uint64 file_size = 8;
+  string file_hash = 9;
+  string file_object_key = 10;
+  string video_stream_uid = 11;
+  uint32 sort_order = 12;
+}
+
+message UpdateResourcePackFileRequest {
+  string file_id = 1;
+  string title = 2;
+  string description = 3;
+  string thumbnail_object_key = 4;
+  string thumbnail_file_hash = 5;
+  ResourcePackFileType file_type = 6;
+  string file_name = 7;
+  uint64 file_size = 8;
+  string file_hash = 9;
+  string file_object_key = 10;
+  string video_stream_uid = 11;
+  uint32 sort_order = 12;
+  uint32 version = 13;
+}
+
+message DeleteResourcePackFileRequest {
+  string file_id = 1;
+  uint32 version = 2;
+}
+
+message DeleteResourcePackFileResponse {
+  bool success = 1;
+}
+
+message GetResourcePackFileRequest {
+  string file_id = 1;
+}
+
+message ListResourcePackFilesRequest {
+  string pack_id = 1;
+  uint32 page_size = 2;
+  string page_token = 3;
+}
+
+message ListResourcePackFilesResponse {
+  repeated ResourcePackFile files = 1;
+  string next_page_token = 2;
+}
+
+message UpdateResourcePackFileThumbnailRequest {
+  string file_id = 1;
+  string thumbnail_object_key = 2;
+  string thumbnail_file_hash = 3;
+  uint32 version = 4;
+}
+
+message GetLessonVideoPlayURLRequest {
+  string lesson_id = 1;      // 课时 ID [required]
+  string candidate_id = 2;   // 考生 ID [required]
+}
+
+message GetLessonVideoPlayURLResponse {
+  string play_url = 1;       // 动态生成的加密播放 URL
+  string expires_at = 2;     // (UTC, RFC3339)
+}
+
+message GetResourcePackFileViewURLRequest {
+  string file_id = 1;       // [required]
+  string candidate_id = 2;  // [required]
+}
+
+message GetResourcePackFileViewURLResponse {
+  string view_url = 1;      // S3 pre-signed URL or Cloudflare signed token URL
+  string expires_at = 2;    // (UTC, RFC3339)
+}
+
+message ResourcePack {
+  string pack_id = 1;
+  string title = 2;
+  string description = 3;
+  string thumbnail_object_key = 4;
+  string thumbnail_file_hash = 5;
+  string respath = 6;
+  string status = 7;
+  uint32 version = 8;
+  string created_at = 9;
+  string updated_at = 10;
+  string icon = 11;
+  string category = 12;
+}
+
+message ResourcePackFile {
+  string file_id = 1;
+  string pack_id = 2;
+  string title = 3;
+  string description = 4;
+  string thumbnail_object_key = 5;
+  string thumbnail_file_hash = 6;
+  ResourcePackFileType file_type = 7;
+  string file_name = 8;
+  uint64 file_size = 9;
+  string file_hash = 10;
+  string file_object_key = 11;
+  string video_stream_uid = 12;
+  uint32 sort_order = 13;
+  uint32 version = 14;
+  string created_at = 15;
+  string updated_at = 16;
+}
+
+message ListResourcePacksCandidateRequest {
+  string candidate_id = 1;
+  uint32 page_size = 2;
+  string page_token = 3;
+}
+
+message ListResourcePackFilesCandidateRequest {
+  string candidate_id = 1;
+  string pack_id = 2;
+  uint32 page_size = 3;
+  string page_token = 4;
+}
+
+message AdminPurgeCandidateCoursesRequest {
+  string candidate_id = 1;        // candidate ULID [required]
+  string pipeline_ulid = 2;       // pipeline instance ULID [required]
+  string admin_id = 3;            // admin user ID [required]
+}
+
+message AdminPurgeCandidateCoursesResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+

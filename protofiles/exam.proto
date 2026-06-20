@@ -1,0 +1,472 @@
+syntax = "proto3";
+
+package gexam;
+
+option go_package = "cftp/gexam";
+
+service GExamService {
+  // --- 核心写入接口 ---
+
+  // 创建考试请求：业务系统发起考试发放，具备强幂等性
+  rpc CreateExam(CreateExamRequest) returns (CreateExamResponse);
+
+  // --- 细化的查询接口 ---
+
+  // 获取考试基础信息：包含报考科目、考生信息、流程状态及预约快照
+  rpc GetExam(GetExamRequest) returns (ExamInfo);
+
+  // 获取考试成绩详情：仅用于查询成绩相关的深度数据 (JSON)
+  rpc GetExamResultDetail(GetExamRequest) returns (ExamResultDetail);
+
+  // --- 预约辅助接口 (Link Generation) ---
+  // 获取预约 URL：生成考生进行考试预约/改期/取消的跳转链接
+  rpc GetScheduleURL(GetURLRequest) returns (URLResponse);
+
+  // GEE(ProScheduler) 完成预约/改期/取消后的回调接口
+  rpc TermUrlCallback(TermUrlCallbackRequest) returns (TermUrlCallbackResponse);
+
+  // 获取考试状态变化路线图（基于 exam_status_transitions 表）
+  rpc GetExamStatusTransitions(GetExamRequest) returns (ExamStatusTransitionsResponse);
+
+  // 重新同步考试结果：仅当结果处于 FETCHED 状态时允许。重新拉取并解析，更新成绩字段，不变更状态机状态。
+  rpc SyncExamResult(GetExamRequest) returns (ExamResultDetail);
+
+  // 管理端：分页列出考试
+  rpc ListExams(ListExamsRequest) returns (ListExamsResponse);
+
+  // 获取考试详细信息：包含所有字段，如考生详细信息、成绩 JSON、乐观锁版本以及审计时间戳等
+  rpc GetExamDetail(GetExamRequest) returns (ExamDetail);
+
+  // 管理端：分页列出审计日志 (不包含 payload 重字段)
+  rpc ListAuditMessages(ListAuditMessagesRequest) returns (ListAuditMessagesResponse);
+
+  // 获取审计日志详情 (包含完整的 JSON payload)
+  rpc GetAuditMessageDetail(GetAuditMessageDetailRequest) returns (AuditMessageDetail);
+
+  // 管理端：分页列出 Webhook 消息 (不包含 payload 重字段)
+  rpc ListWebhookMessages(ListWebhookMessagesRequest) returns (ListWebhookMessagesResponse);
+
+  // 获取 Webhook 消息详情 (包含完整的 JSON payload)
+  rpc GetWebhookMessageDetail(GetWebhookMessageDetailRequest) returns (WebhookMessageDetail);
+
+  // 管理端/开发端：全局分页列出考试状态变迁历史
+  rpc ListExamStatusTransitions(ListExamStatusTransitionsRequest) returns (ListExamStatusTransitionsResponse);
+
+  // 管理端：触发重新处理 Webhook 消息 (支持按 msg_fp 或直接输入原始 payload)
+  rpc ReprocessWebhookMessage(ReprocessWebhookMessageRequest) returns (ReprocessWebhookMessageResponse);
+
+  // 提醒邮件管理接口
+  rpc ListReminderMails(ListReminderMailsRequest) returns (ListReminderMailsResponse);
+  rpc RetryReminderMail(RetryReminderMailRequest) returns (RetryReminderMailResponse);
+  rpc IgnoreReminderMail(IgnoreReminderMailRequest) returns (IgnoreReminderMailResponse);
+  rpc GetReminderMailDetail(GetReminderMailDetailRequest) returns (GetReminderMailDetailResponse);
+
+  // 管理端：清理指定考生数据
+  rpc AdminPurgeCandidateExams(AdminPurgeCandidateExamsRequest) returns (AdminPurgeCandidateExamsResponse);
+}
+
+
+// --- 请求参数定义 ---
+
+message CreateExamRequest {
+  string exam_id = 1; // [required] 业务系统生成的全局唯一 ID，用于强幂等控制
+  string business_unit = 2; // [required] 归属业务单元
+  string course_unit_ulid = 3; // [required] 课程单元ULID
+
+  // 考试信息
+  string program_code = 4; // [required] 项目代码
+  string exam_code = 5; // [required] 科目代码
+  string exam_form = 6; // [required] 试卷代码
+
+  // 考生信息
+  string candidate_id = 7; // [required] 考生ID
+  string candidate_first_name = 8; // [required] 考生名字
+  string candidate_middle_name = 9; // [required] 考生中间名
+  string candidate_last_name = 10; // [required] 考生姓氏
+  string candidate_email = 11; // [required] 考生邮箱
+  string candidate_home_phone = 12; // [required] 考生家庭电话
+  string candidate_work_phone = 13; // [required] 考生工作电话
+  string candidate_gender = 14; // [required] 考生性别
+  string candidate_birthdate = 15; // [required] 考生生日
+  string candidate_country = 16; // [required] 考生国家
+  string candidate_province = 17; // [required] 考生省份
+  string candidate_city = 18; // [required] 考生城市
+  string candidate_address = 19; // [required] 考生地址
+  string candidate_postal_code = 20; // [required] 考生邮编
+  string pipeline_ulid = 21; // [optional] 所属 pipeline 实例 ULID
+  string certification_name = 22; // [optional] 项目/认证名称
+}
+
+message GetExamRequest {
+  // [required] 考试ID, 业务系统持有的唯一考试 ID 
+  string exam_id = 1;
+}
+
+message GetURLRequest {
+  // [required] 业务系统持有的唯一考试 ID
+  string exam_id = 1;
+  // [required] gexam会在这个url后面加上"/[url_type]/[exam_id]"作为回调目标URL，
+  // 当gee(ProScheduler)完成后回调这个URL
+  // 业务系统需要响应该回调，并把[url_type]和[exam_id]通过grpc发回给exam
+  string term_url_base = 2;
+  // [required] url_type : 
+  // 线下考试: schd / reschd 
+  // 线上考试：proctorsch/ proctorresch
+  // 取消考试：cancel
+  string url_type = 3;
+}
+
+message TermUrlCallbackRequest {
+  // [required] 业务系统持有的唯一考试 ID
+  string exam_id = 1;
+  // [required] url_type : 
+  // 线下考试: schd / reschd 
+  // 线上考试：proctorsch/ proctorresch
+  // 取消考试：cancel
+  string url_type = 2;
+
+  // [optional] callback body
+  // 详细说明：GEE(ProScheduler) 完成预约/改期/取消后的回调数据
+  // 从http post的form中提取，类似如下代码：
+  //  r.ParseForm()
+  //  callback_body := r.FormValue("apptdata")
+  string callback_body = 3;
+}
+
+message TermUrlCallbackResponse {
+  // [required] 业务系统持有的唯一考试 ID
+  string exam_id = 1;
+  // [required] exam status
+  string exam_status = 2;
+}
+
+// --- 返回参数定义 ---
+
+message CreateExamResponse {
+  string exam_id = 1;
+  string exam_status = 2;
+}
+
+message ExamInfo {
+  string exam_id = 1;
+  string program_code = 2;
+  string exam_code = 3;
+
+  // 流程状态快照
+  string exam_status = 4;
+  string result_status = 5;
+
+  // 成绩快照
+  double total_score = 6;
+  bool is_passed = 7;
+
+  // 考生信息快照
+  string candidate_first_name = 8;
+  string candidate_last_name = 9;
+  string candidate_email = 10;
+
+  // 预约信息快照
+  string confirmation_number = 11;
+  string appointment_start_time = 12;
+  string appointment_end_time = 13;
+  string site_name = 14;
+
+  // termurl 回调信息
+  string last_termurl_timestamp = 15;
+  string last_termurl_type = 16;
+}
+
+message ExamResultDetail {
+  string exam_id = 1;
+  double total_score = 2;
+  bool is_passed = 3;
+  string score_details_json = 4;
+}
+
+message URLResponse {
+  string url = 1;
+}
+
+message ExamStatusTransition {
+  string msg_fp = 1;
+  string exam_id = 2;
+  string event_type = 3;
+  string status_type = 4; // 状态类型: EXAM / RESULT
+  string from_status = 5;
+  string to_status = 6;
+  string transitioned_at = 7; // 变迁发生时间 (RFC3339 格式)
+  string metadata_json = 8; // 事件中提取的上下文快照 JSON
+  string created_at = 9; // 创建时间 (RFC3339 格式)
+}
+
+message ExamStatusTransitionsResponse {
+  string exam_id = 1;
+  repeated ExamStatusTransition transitions = 2;
+}
+
+message ReprocessWebhookMessageRequest {
+  int64 webhook_msg_id = 1;         // Webhook 消息的主键 ID
+}
+
+message ReprocessWebhookMessageResponse {
+  string msg_fp = 1;
+  string status = 2;
+}
+
+message ListExamsRequest {
+  optional string status = 1;             // 状态筛选 ("OPEN", "SCHEDULED", "DONE") [optional]
+  uint32 page = 2;                        // 页码, 1-based [optional]
+  uint32 page_size = 3;                   // 每页数量 [optional]
+  optional string result_status = 4;      // 结果状态筛选 [optional]
+  optional string candidate_id = 5;       // 考生ID筛选 [optional]
+  optional string confirmation_number = 6;// 预约确认号筛选 [optional]
+  optional string course_unit_ulid = 7;   // 课程单元ULID筛选 [optional]
+}
+
+message ListExamsResponse {
+  repeated ExamInfo exams = 1;     // 考试列表
+  uint32 total = 2;                // 总条数
+}
+
+// --- 扩展查询接口的请求与返回参数 ---
+
+message ExamDetail {
+  string exam_id = 1;
+  string business_unit = 2;
+  string course_unit_ulid = 3;
+  string program_code = 4;
+  string exam_code = 5;
+  string exam_form = 6;
+
+  // 考生详情
+  string candidate_id = 7;
+  string candidate_first_name = 8;
+  string candidate_middle_name = 9;
+  string candidate_last_name = 10;
+  string candidate_email = 11;
+  string candidate_home_phone = 12;
+  string candidate_work_phone = 13;
+  string candidate_gender = 14;
+  string candidate_birthdate = 15;
+  string candidate_country = 16;
+  string candidate_province = 17;
+  string candidate_city = 18;
+  string candidate_address = 19;
+  string candidate_postal_code = 20;
+
+  // 流程与结果状态
+  string exam_status = 21;
+  string result_status = 22;
+  string result_url = 23;
+
+  // 成绩详情
+  double total_score = 24;
+  bool is_passed = 25;
+  string score_details_json = 26;
+
+  // 预约信息
+  string confirmation_number = 27;
+  string appointment_start_time = 28;
+  string appointment_end_time = 29;
+  string site_code = 30;
+  string site_name = 31;
+  string delivery_mode = 32;
+
+  // 调度与重试
+  uint32 result_retry_count = 33;
+  string result_retry_at = 34;
+  string result_error_message = 35;
+  uint32 result_max_retries = 36;
+
+  // 审计与时间戳
+  string last_termurl_timestamp = 37;
+  string last_termurl_type = 38;
+  string last_event_timestamp = 39;
+  string last_event_type = 40;
+  string last_message_id = 41;
+  uint32 reschedule_count = 42;
+
+  uint32 version = 43;
+  string created_at = 44;
+  string updated_at = 45;
+
+  string pipeline_ulid = 46;
+  string certification_name = 47;
+  string last_termurl_body = 48;  // 最后一次TermUrl回调的原始body
+}
+
+message ListAuditMessagesRequest {
+  optional string processed_status = 1; // "PENDING", "PROCESSED", "SKIPPED"
+  optional string event_type = 2;
+  optional string start_time = 3;       // RFC3339 [optional]
+  optional string end_time = 4;         // RFC3339 [optional]
+  uint32 page = 5;                      // 页码, 1-based
+  uint32 page_size = 6;                 // 每页数量
+}
+
+message ListAuditMessagesResponse {
+  repeated AuditMessageSummary audit_messages = 1;
+  uint32 total = 2;
+}
+
+message AuditMessageSummary {
+  uint64 id = 1;
+  string message_id = 2;
+  string event_type = 3;
+  string event_timestamp = 4;
+  string audit_date = 5;
+  string audit_status = 6;
+  string processed_status = 7;
+  uint32 process_attempts = 8;
+  string created_at = 9;
+}
+
+message GetAuditMessageDetailRequest {
+  string message_id = 1;
+}
+
+message AuditMessageDetail {
+  uint64 id = 1;
+  string message_id = 2;
+  string event_type = 3;
+  string event_timestamp = 4;
+  string payload_json = 5;
+  string audit_date = 6;
+  string audit_status = 7;
+  string processed_status = 8;
+  string processed_at = 9;
+  uint32 process_attempts = 10;
+  string created_at = 11;
+}
+
+message ListWebhookMessagesRequest {
+  optional string processed_status = 1;
+  optional string event_type = 2;
+  optional string exam_id = 3;
+  optional string confirmation_number = 4;
+  optional string start_time = 5;
+  optional string end_time = 6;
+  uint32 page = 7;
+  uint32 page_size = 8;
+}
+
+message ListWebhookMessagesResponse {
+  repeated WebhookMessageSummary webhook_messages = 1;
+  uint32 total = 2;
+}
+
+message WebhookMessageSummary {
+  uint64 id = 1;
+  string msg_fp = 2;
+  string event_type = 3;
+  string event_timestamp = 4;
+  string exam_id = 5;
+  string confirmation_number = 6;
+  string processed_status = 7;
+  string created_at = 8;
+}
+
+message GetWebhookMessageDetailRequest {
+  string msg_fp = 1;
+}
+
+message WebhookMessageDetail {
+  uint64 id = 1;
+  string msg_fp = 2;
+  string event_type = 3;
+  string event_timestamp = 4;
+  string exam_id = 5;
+  string confirmation_number = 6;
+  string payload_json = 7;
+  string processed_status = 8;
+  string processed_at = 9;
+  string created_at = 10;
+}
+
+message ListExamStatusTransitionsRequest {
+  optional string exam_id = 1;
+  optional string status_type = 2; // "EXAM" or "RESULT"
+  uint32 page = 3;
+  uint32 page_size = 4;
+}
+
+message ListExamStatusTransitionsResponse {
+  repeated ExamStatusTransition transitions = 1;
+  uint32 total = 2;
+}
+
+message ListReminderMailsRequest {
+  optional string exam_id = 1;
+  optional string task_status = 2;
+  optional string delivery_status = 3;
+  optional string candidate_email = 4;
+  uint32 page = 5;
+  uint32 page_size = 6;
+  optional string reminder_type = 7;
+}
+
+message ReminderMailItem {
+  string mail_id = 1;
+  string exam_id = 2;
+  string reminder_type = 3;
+  string to_email = 4;
+  string to_name = 5;
+  string subject = 6;
+  string scheduled_at = 7;
+  string task_status = 8;
+  string delivery_status = 9;
+  string error_message = 10;
+  int32 retry_count = 11;
+  string created_at = 12;
+  string updated_at = 13;
+  string manual_by = 22;
+  string error_code = 23;
+}
+
+message ListReminderMailsResponse {
+  repeated ReminderMailItem mails = 1;
+  uint32 total = 2;
+}
+
+message RetryReminderMailRequest {
+  string mail_id = 1;
+  string admin_id = 2;
+  optional string override_recipient_email = 3; // [optional] custom recipient email
+  optional string override_template_params_json = 4; // [optional] custom template parameters JSON
+}
+
+message RetryReminderMailResponse {
+  string new_mail_id = 1;
+  string status = 2;
+}
+
+message GetReminderMailDetailRequest {
+  string mail_id = 1;
+}
+
+message GetReminderMailDetailResponse {
+  ReminderMailItem mail = 1;
+  string payload_json = 2;
+}
+
+message IgnoreReminderMailRequest {
+  string mail_id = 1;
+  string admin_id = 2;
+}
+
+message IgnoreReminderMailResponse {
+  string mail_id = 1;
+  string status = 2;
+}
+
+message AdminPurgeCandidateExamsRequest {
+  string candidate_id = 1;        // candidate ID [required]
+  string pipeline_ulid = 2;       // pipeline instance ULID [required]
+  string admin_id = 3;            // admin ID [required]
+}
+
+message AdminPurgeCandidateExamsResponse {
+  bool success = 1;
+  string message = 2;
+}
+

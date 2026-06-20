@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package gpdf;
+
+option go_package = "cftp/gpdf";
+
+service PdfGenService {
+  // 请求生成pdf
+  rpc GenPdf(GenPdfRequest) returns (GenPdfResponse);
+}
+
+message GenPdfRequest {
+  string html_content = 1; // html 内容 [required]
+}
+
+message GenPdfResponse {
+  bytes pdf_data = 1; // pdf 文件内容
+  string sha256 = 2; // pdf 的 sha256 值
+}

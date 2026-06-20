@@ -1,0 +1,661 @@
+syntax = "proto3";
+
+package gprog;
+
+option go_package = "cftp/gprog";
+
+service ProgService {
+  // gmall 调用该接口创建并初始化一条 pipeline
+  rpc PipelineCreate(PipelineCreateReq) returns (PipelineCreateRsp);
+  // candidate 调用该接口报名考试
+  rpc CandidateSignupExam(CandidateSignupExamReq) returns (CandidateSignupExamRsp);
+  // candidate 调用该接口申请重新考试
+  rpc CandidateApplyRetake(CandidateApplyRetakeReq) returns (CandidateApplyRetakeRsp);
+  // admin 调用该接口终止整个 pipeline
+  rpc AdminTerminatePipeline(AdminTerminatePipelineReq) returns (AdminTerminatePipelineRsp);
+  // admin 调用该接口强制把 course unit 置为 completed
+  rpc AdminForceCourseCompleted(AdminForceCourseCompletedReq) returns (AdminForceCourseCompletedRsp);
+  // admin 调用该接口强制把 course unit 恢复到等待报名考试
+  rpc AdminForceCourseSignupExam(AdminForceCourseSignupExamReq) returns (AdminForceCourseSignupExamRsp);
+  // admin 调用该接口忽略某个发送失败的邮件任务
+  rpc IgnoreMailTask(IgnoreMailTaskReq) returns (IgnoreMailTaskRsp);
+  // admin 调用该接口重发某个发送失败的邮件任务
+  rpc ResendMailTask(ResendMailTaskReq) returns (ResendMailTaskRsp);
+  // candidate 或管理端调用该接口查询某个考生的 pipeline 列表
+  rpc ListCandidatePipelines(ListCandidatePipelinesReq) returns (ListCandidatePipelinesRsp);
+  // 查询某个 pipeline 的详细详情（含 stages / units 结构树）
+  rpc GetPipelineDetail(GetPipelineDetailReq) returns (GetPipelineDetailRsp);
+  // 查询某个 course unit 的详情
+  rpc GetCourseUnitDetail(GetCourseUnitDetailReq) returns (GetCourseUnitDetailRsp);
+  // 查询某个 pipeline 的状态切换记录审计日志
+  rpc ListStatusTransitionLogs(ListStatusTransitionLogsReq) returns (ListStatusTransitionLogsRsp);
+  // 查询考生的邮件发送任务列表（轻量摘要）
+  rpc ListMailTasks(ListMailTasksReq) returns (ListMailTasksRsp);
+  // 点查邮件任务的详细信息
+  rpc GetMailTaskDetail(GetMailTaskDetailReq) returns (GetMailTaskDetailRsp);
+  // 查询考生的证书签发任务（轻量摘要）
+  rpc ListCertificateTasks(ListCertificateTasksReq) returns (ListCertificateTasksRsp);
+  // 点查证书任务的详细信息
+  rpc GetCertificateTaskDetail(GetCertificateTaskDetailReq) returns (GetCertificateTaskDetailRsp);
+  // admin 调用该接口重试颁发失败的证书任务
+  rpc RetryCertificateTask(RetryCertificateTaskReq) returns (RetryCertificateTaskRsp);
+  // admin 调用该接口触发当前 stage 已完成的 running pipeline 的下一个 stage 事件
+  rpc AdminTriggerNextStage(AdminTriggerNextStageReq) returns (AdminTriggerNextStageRsp);
+
+  // 获得考试URL
+  rpc GetExamURL(GetURLRequest) returns (URLResponse);
+  rpc ExamUrlCallback(ExamUrlCallbackReq) returns (ExamUrlCallbackRsp);
+
+  // --- New Query RPCs ---
+  rpc ListPipelines(ListPipelinesReq) returns (ListPipelinesRsp);
+  rpc ListStages(ListStagesReq) returns (ListStagesRsp);
+  rpc GetStageDetail(GetStageDetailReq) returns (GetStageDetailRsp);
+  rpc ListCourseUnits(ListCourseUnitsReq) returns (ListCourseUnitsRsp);
+  rpc ListDriverEvents(ListDriverEventsReq) returns (ListDriverEventsRsp);
+  rpc GetDriverEventDetail(GetDriverEventDetailReq) returns (GetDriverEventDetailRsp);
+  rpc ListNatsMessages(ListNatsMessagesReq) returns (ListNatsMessagesRsp);
+  rpc GetNatsMessageDetail(GetNatsMessageDetailReq) returns (GetNatsMessageDetailRsp);
+  rpc GetStatusTransitionLogDetail(GetStatusTransitionLogDetailReq) returns (GetStatusTransitionLogDetailRsp);
+  rpc GetPipelineCertificateViewURL(GetPipelineCertificateViewURLReq) returns (GetPipelineCertificateViewURLRsp);
+  // 校验重考资格
+  rpc ValidateRetakeEligibility(ValidateRetakeEligibilityReq) returns (ValidateRetakeEligibilityRsp);
+
+  rpc AdminPurgeCandidatePipeline(AdminPurgeCandidatePipelineRequest) returns (AdminPurgeCandidatePipelineResponse);
+}
+
+// pipeline 顶层状态
+enum PipelineStatus {
+  PIPELINE_STATUS_UNSPECIFIED = 0;
+  PIPELINE_STATUS_RUNNING = 1;
+  PIPELINE_STATUS_WAIT_FINAL_ELIG = 2;
+  PIPELINE_STATUS_COMPLETED = 3;
+  PIPELINE_STATUS_ISSUING_CERT = 4;
+}
+
+// stage 运行状态
+enum StageStatus {
+  STAGE_STATUS_UNSPECIFIED = 0;
+  STAGE_STATUS_WAIT_CANDIDATE = 1;
+  STAGE_STATUS_RUNNING = 2;
+  STAGE_STATUS_COMPLETED = 3;
+}
+
+// course unit 运行状态
+enum CourseUnitStatus {
+  COURSE_UNIT_STATUS_UNSPECIFIED = 0;
+  COURSE_UNIT_STATUS_WAITING_STUDY = 1;
+  COURSE_UNIT_STATUS_WAITING_SIGNUP_EXAM = 2;
+  COURSE_UNIT_STATUS_EXAM_OPEN = 3;
+  COURSE_UNIT_STATUS_EXAM_SCHEDULED = 4;
+  COURSE_UNIT_STATUS_EXAM_FAILED = 5;
+  COURSE_UNIT_STATUS_COMPLETED = 6;
+}
+
+// PipelineCreate 请求
+message PipelineCreateReq {
+  string pipeline_ulid = 1;         // pipeline 实例 ULID [required]
+  string candidate_ulid = 2;        // 考生 ULID [required]
+  string pipeline_cc_ulid = 3;      // gcc 中 pipeline 配置 ULID [required]
+  string course_selection_json = 4; // 选课与免考信息 JSON [required]
+  string source_system = 5;         // 请求来源系统，如 gmall [optional]
+  string idempotency_key = 6;       // 调用侧请求幂等键 [optional]
+  string ref_entity_type = 7;       // 引用关联实体类型 [optional]
+  string ref_entity_id = 8;         // 引用关联实体ID [optional]
+  string bundle_order_ulid = 9;     // bundle order ULID [required]
+}
+
+// PipelineCreate 响应
+message PipelineCreateRsp {
+  string pipeline_ulid = 1;             // pipeline 实例 ULID [required]
+  PipelineStatus pipeline_status = 2;   // pipeline 当前状态 [required]
+  string current_stage_ulid = 3;        // 当前 stage 实例 ULID，若无则为空 [optional]
+  StageStatus current_stage_status = 4; // 当前 stage 状态，若无则为 UNSPECIFIED [required]
+  string message = 5;                   // 人类可读说明 [required]
+}
+
+// CandidateSignupExam 请求
+message CandidateSignupExamReq {
+  string course_unit_ulid = 1;     // course unit 实例 ULID [required]
+  string candidate_ulid = 2;       // 考生 ULID [required]
+  string candidate_first_name = 3; // 考生名字 [required]
+  string candidate_middle_name = 4; // 考生中间名 [required]
+  string candidate_last_name = 5;  // 考生姓氏 [required]
+  string candidate_email = 6;      // 考生邮箱 [required]
+  string candidate_home_phone = 7; // 考生家庭电话 [required]
+  string candidate_work_phone = 8; // 考生工作电话 [required]
+  string candidate_gender = 9;     // 考生性别 [required]
+  string candidate_birthdate = 10; // 考生生日，格式 YYYY-MM-DD [required]
+  string candidate_country = 11;   // 考生国家 [required]
+  string candidate_province = 12;  // 考生省份 [required]
+  string candidate_city = 13;      // 考生城市 [required]
+  string candidate_address = 14;   // 考生地址 [required]
+  string candidate_postal_code = 15; // 考生邮编 [required]
+  string source_system = 16;       // 请求来源系统 [optional]
+}
+
+// CandidateSignupExam 响应
+message CandidateSignupExamRsp {
+  string course_unit_ulid = 1;              // course unit 实例 ULID [required]
+  CourseUnitStatus course_unit_status = 2;  // course unit 当前状态 [required]
+  string message = 3;                       // 人类可读说明 [required]
+}
+
+// CandidateApplyRetake 请求
+message CandidateApplyRetakeReq {
+  string course_unit_ulid = 1; // course unit 实例 ULID [required]
+  string candidate_ulid = 2;   // 考生 ULID [required]
+}
+
+// CandidateApplyRetake 响应
+message CandidateApplyRetakeRsp {
+  string course_unit_ulid = 1;             // course unit 实例 ULID [required]
+  CourseUnitStatus course_unit_status = 2; // course unit 当前状态 [required]
+  string message = 3;                      // 人类可读说明 [required]
+}
+
+// AdminTerminatePipeline 请求
+message AdminTerminatePipelineReq {
+  string pipeline_ulid = 1; // pipeline 实例 ULID [required]
+  string admin_id = 2;      // 操作管理员 ID [required]
+  string reason_message = 3; // 补充说明 [optional]
+}
+
+// AdminTerminatePipeline 响应
+message AdminTerminatePipelineRsp {
+  string pipeline_ulid = 1;           // pipeline 实例 ULID [required]
+  PipelineStatus pipeline_status = 2; // pipeline 当前状态 [required]
+  string message = 3;                 // 人类可读说明 [required]
+}
+
+// AdminForceCourseCompleted 请求
+message AdminForceCourseCompletedReq {
+  string course_unit_ulid = 1; // course unit 实例 ULID [required]
+  string admin_id = 2;         // 操作管理员 ID [required]
+  string reason_message = 3;   // 补充说明 [optional]
+}
+
+// AdminForceCourseCompleted 响应
+message AdminForceCourseCompletedRsp {
+  string course_unit_ulid = 1;             // course unit 实例 ULID [required]
+  CourseUnitStatus course_unit_status = 2; // course unit 当前状态 [required]
+  string message = 3;                      // 人类可读说明 [required]
+}
+
+// AdminForceCourseSignupExam 请求
+message AdminForceCourseSignupExamReq {
+  string course_unit_ulid = 1; // course unit 实例 ULID [required]
+  string admin_id = 2;         // 操作管理员 ID [required]
+  string reason_message = 3;   // 补充说明 [optional]
+}
+
+// AdminForceCourseSignupExam 响应
+message AdminForceCourseSignupExamRsp {
+  string course_unit_ulid = 1;             // course unit 实例 ULID [required]
+  CourseUnitStatus course_unit_status = 2; // course unit 当前状态 [required]
+  string message = 3;                      // 人类可读说明 [required]
+}
+
+// IgnoreMailTask 请求
+message IgnoreMailTaskReq {
+  string mail_task_ulid = 1; // 邮件任务 ULID [required]
+  string admin_id = 2;       // 操作管理员 ID [required]
+}
+
+// IgnoreMailTask 响应
+message IgnoreMailTaskRsp {
+  string mail_task_ulid = 1; // 邮件任务 ULID [required]
+  string task_status = 2;    // 新状态，如 IGNORED [required]
+  string message = 3;        // 人类可读说明 [required]
+}
+
+// ResendMailTask 请求
+message ResendMailTaskReq {
+  string mail_task_ulid = 1; // 邮件任务 ULID [required]
+  string admin_id = 2;       // 操作管理员 ID [required]
+  bool use_new_email = 3;    // 是否使用考生当前最新邮箱 [required]
+  optional string override_recipient_email = 4; // [optional] custom recipient email
+  optional string override_template_params_json = 5; // [optional] custom template parameters JSON
+}
+
+// ResendMailTask 响应
+message ResendMailTaskRsp {
+  string mail_task_ulid = 1; // 原邮件任务 ULID [required]
+  string task_status = 2;    // 新状态，如 RESEND [required]
+  string message = 3;        // 人类可读说明 [required]
+}
+
+// ListCandidatePipelines 请求
+message ListCandidatePipelinesReq {
+  string candidate_ulid = 1; // 考生 ULID [required]
+  PipelineStatus status = 2; // 可选状态过滤，UNSPECIFIED 表示不过滤 [optional]
+}
+
+// ListCandidatePipelines 响应
+message ListCandidatePipelinesRsp {
+  repeated PipelineSummary pipelines = 1; // pipeline 摘要列表 [required]
+}
+
+// PipelineSummary pipeline 摘要
+message PipelineSummary {
+  string pipeline_ulid = 1;      // pipeline 实例 ULID [required]
+  string candidate_ulid = 2;     // 考生 ULID [required]
+  string pipeline_cc_ulid = 3;   // gcc 中 pipeline 配置 ULID [required]
+  PipelineStatus status = 4;     // pipeline 当前状态 [required]
+  string current_stage_ulid = 5; // 当前 stage 实例 ULID [optional]
+  string started_at = 6;         // pipeline 开始时间，RFC3339 [optional]
+  string completed_at = 7;       // pipeline 完成时间，RFC3339 [optional]
+  string created_at = 8;         // pipeline 创建时间，RFC3339 [required]
+}
+
+message GetPipelineDetailReq {
+  string pipeline_ulid = 1; // [required]
+}
+
+message GetPipelineDetailRsp {
+  PipelineDetail pipeline = 1;     // pipeline 详情
+  repeated StageDetail stages = 2; // stage 详情树
+}
+
+message PipelineDetail {
+  string pipeline_ulid = 1;
+  string candidate_ulid = 2;
+  string pipeline_cc_ulid = 3;
+  PipelineStatus status = 4;
+  string current_stage_ulid = 5;
+  string course_selection_json = 6; // 选课JSON大字段
+  string started_at = 7;
+  string completed_at = 8;
+  string completed_reason = 9;
+  string last_event_at = 10;
+  string last_reconciled_at = 11;
+  string created_at = 12;
+}
+
+message StageDetail {
+  StageSummary stage = 1;
+  repeated CourseUnitSummary course_units = 2; // stage 下属单元
+}
+
+message StageSummary {
+  string stage_ulid = 1;
+  string pipeline_ulid = 2;
+  string stage_cc_ulid = 3;
+  uint32 seq_no = 4;
+  StageStatus status = 5;
+  string started_at = 6;
+  string completed_at = 7;
+  string completed_reason = 8;
+}
+
+message CourseUnitSummary {
+  string course_unit_ulid = 1;
+  string course_unit_cc_ulid = 2;
+  CourseUnitStatus status = 3;
+  string course_progress = 4;
+  string exam_ulid = 5;
+  uint32 retried_count = 6;
+  string completed_at = 7;
+}
+
+message GetCourseUnitDetailReq {
+  string course_unit_ulid = 1; // [required]
+}
+
+message GetCourseUnitDetailRsp {
+  string course_unit_ulid = 1;
+  string pipeline_ulid = 2;
+  string stage_ulid = 3;
+  string course_unit_cc_ulid = 4;
+  CourseUnitStatus status = 5;
+  string course_progress = 6;
+  string exam_ulid = 7;
+  uint32 retried_count = 8;
+  string study_finished_at = 9;
+  string exam_started_at = 10;
+  string exam_finished_at = 11;
+  string completed_at = 12;
+  string completed_reason = 13;
+  StageStatus parent_stage_status = 14;      // 所属 stage 状态
+  PipelineStatus parent_pipeline_status = 15; // 所属 pipeline 状态
+}
+
+message ListStatusTransitionLogsReq {
+  string pipeline_ulid = 1; // [required]
+  int32 limit = 2;          // [optional]
+  int32 offset = 3;         // [optional]
+}
+
+message ListStatusTransitionLogsRsp {
+  repeated StatusTransitionLogSummary logs = 1;
+  int32 total = 2;
+}
+
+message StatusTransitionLogSummary {
+  string transition_ulid = 1;
+  string entity_type = 2;
+  string entity_ulid = 3;
+  string from_status = 4;
+  string to_status = 5;
+  string reason_code = 6;
+  string reason_message = 7;
+  string trigger_source = 8;
+  string event_type = 9;
+  string created_at = 10;
+}
+
+message ListMailTasksReq {
+  string candidate_id = 1;  // [required]
+  string pipeline_ulid = 2; // [optional]
+  int32 limit = 3;          // [optional]
+  int32 offset = 4;         // [optional]
+}
+
+message ListMailTasksRsp {
+  repeated MailTaskSummary tasks = 1;
+  int32 total = 2;
+}
+
+message MailTaskSummary {
+  string mail_task_ulid = 1;
+  string candidate_id = 2;
+  string pipeline_ulid = 3;
+  string stage_ulid = 4;
+  string course_unit_ulid = 5;
+  string mail_type = 6;
+  string recipient_email = 7;
+  string recipient_name = 8;
+  string subject = 9;
+  string task_status = 10;
+  string final_at = 11;
+  string created_at = 12;
+  uint32 retry_count = 13;
+}
+
+message GetMailTaskDetailReq {
+  string mail_task_ulid = 1; // [required]
+}
+
+message GetMailTaskDetailRsp {
+  MailTaskSummary summary = 1;
+  string template_path = 2;
+  string template_params_json = 3; // 邮件模板参数大JSON
+  string manual_by = 4;
+  string last_error_code = 5;
+  string last_error_msg = 6;
+}
+
+message ListCertificateTasksReq {
+  string candidate_ulid = 1; // [required]
+  string pipeline_ulid = 2;  // [optional]
+  int32 limit = 3;           // [optional]
+  int32 offset = 4;          // [optional]
+}
+
+message ListCertificateTasksRsp {
+  repeated CertificateTaskSummary tasks = 1;
+  int32 total = 2;
+}
+
+message CertificateTaskSummary {
+  string task_ulid = 1;
+  string pipeline_ulid = 2;
+  string candidate_ulid = 3;
+  string qual_id = 4;
+  string request_id = 5;
+  string degree_no = 6;
+  string status = 7;
+  string cred_id = 8;
+  string created_at = 9;
+}
+
+message GetCertificateTaskDetailReq {
+  string task_ulid = 1; // [required]
+}
+
+message GetCertificateTaskDetailRsp {
+  CertificateTaskSummary summary = 1;
+  string template_params = 2; // PDF模板参数大JSON
+  string error_message = 3;
+}
+
+message RetryCertificateTaskReq {
+  string task_ulid = 1; // [required]
+  string admin_id = 2;  // [required]
+}
+
+message RetryCertificateTaskRsp {
+  string task_ulid = 1; // [required]
+  string status = 2;    // [required]
+  string message = 3;   // [required]
+}
+
+message AdminTriggerNextStageReq {
+  string pipeline_ulid = 1;  // pipeline 实例 ULID [required]
+  string admin_id = 2;       // 操作管理员 ID [required]
+  string reason_message = 3; // 补充说明 [optional]
+}
+
+message AdminTriggerNextStageRsp {
+  string pipeline_ulid = 1;             // pipeline 实例 ULID [required]
+  PipelineStatus pipeline_status = 2;   // pipeline 当前状态 [required]
+  string current_stage_ulid = 3;        // 当前 stage 实例 ULID，若无则为空 [optional]
+  StageStatus current_stage_status = 4; // 当前 stage 状态，若无则为 UNSPECIFIED [required]
+  string message = 5;                   // 人类可读说明 [required]
+}
+
+message ListPipelinesReq {
+  string candidate_ulid = 1;     // [optional]
+  string pipeline_cc_ulid = 2;   // [optional]
+  PipelineStatus status = 3;     // [optional]
+  int32 limit = 4;               // [optional]
+  int32 offset = 5;              // [optional]
+}
+
+message ListPipelinesRsp {
+  repeated PipelineSummary pipelines = 1;
+  int32 total = 2;
+}
+
+message ListStagesReq {
+  string pipeline_ulid = 1;      // [required]
+  int32 limit = 2;               // [optional]
+  int32 offset = 3;              // [optional]
+}
+
+message ListStagesRsp {
+  repeated StageSummary stages = 1;
+  int32 total = 2;
+}
+
+message GetStageDetailReq {
+  string stage_ulid = 1;         // [required]
+}
+
+message GetStageDetailRsp {
+  StageSummary summary = 1;
+  repeated CourseUnitSummary course_units = 2;
+  string last_event_at = 3;
+  string last_reconciled_at = 4;
+  string created_at = 5;
+  string updated_at = 6;
+}
+
+message ListCourseUnitsReq {
+  string pipeline_ulid = 1;      // [required]
+  string stage_ulid = 2;         // [optional]
+  CourseUnitStatus status = 3;   // [optional]
+  int32 limit = 4;               // [optional]
+  int32 offset = 5;              // [optional]
+}
+
+message ListCourseUnitsRsp {
+  repeated CourseUnitSummary course_units = 1;
+  int32 total = 2;
+}
+
+message DriverEventSummary {
+  string event_ulid = 1;
+  string entity_type = 2;
+  string entity_ulid = 3;
+  string event_type = 4;
+  string source = 5;
+  string event_status = 6;
+  uint32 process_attempts = 7;
+  string last_reconcile_at = 8;
+  string created_at = 9;
+}
+
+message ListDriverEventsReq {
+  string entity_type = 1;        // [optional]
+  string entity_ulid = 2;        // [optional]
+  string event_status = 3;       // [optional]
+  string event_type = 4;         // [optional]
+  int32 limit = 5;               // [optional]
+  int32 offset = 6;              // [optional]
+}
+
+message ListDriverEventsRsp {
+  repeated DriverEventSummary items = 1;
+  int32 total = 2;
+}
+
+message GetDriverEventDetailReq {
+  string event_ulid = 1;         // [required]
+}
+
+message GetDriverEventDetailRsp {
+  DriverEventSummary summary = 1;
+  string payload_json = 2;       // The large JSON field
+  string last_error_code = 3;
+  string last_error_message = 4;
+  string updated_at = 5;
+}
+
+message NatsMessageSummary {
+  string message_ulid = 1;
+  string subject = 2;
+  string source_service = 3;
+  string message_type = 4;
+  string receive_status = 5;
+  uint32 process_attempts = 6;
+  string received_at = 7;
+  string last_processing_at = 8;
+  string created_at = 9;
+}
+
+message ListNatsMessagesReq {
+  string receive_status = 1;     // [optional]
+  string source_service = 2;     // [optional]
+  int32 limit = 3;               // [optional]
+  int32 offset = 4;              // [optional]
+}
+
+message ListNatsMessagesRsp {
+  repeated NatsMessageSummary items = 1;
+  int32 total = 2;
+}
+
+message GetNatsMessageDetailReq {
+  string message_ulid = 1;       // [required]
+}
+
+message GetNatsMessageDetailRsp {
+  NatsMessageSummary summary = 1;
+  string message_payload = 2;    // The large JSON field
+  string last_error_code = 3;
+  string last_error_message = 4;
+  string updated_at = 5;
+}
+
+message GetStatusTransitionLogDetailReq {
+  string transition_ulid = 1;    // [required]
+}
+
+message GetStatusTransitionLogDetailRsp {
+  StatusTransitionLogSummary summary = 1;
+  string pipeline_ulid = 2;
+}
+
+enum ExamURLType {
+  EXAM_URL_TYPE_UNKNOWN = 0;  // 未知
+  OFFLINE_SCHED = 1;   // 线下预约
+  OFFLINE_RESCH = 2;    // 线下改期
+  ONLINE_SCHED = 3; // 线上预约
+  ONLINE_RESCH = 4;  // 线上改期
+  CANCEL = 5;             // 取消考试
+}
+
+message GetURLRequest {
+  string candidate_id = 1; // [required] CandidateID
+  string pipeline_ulid = 2; // [required] PipelineULID
+  string course_ulid = 3; // [required] CourseULID
+  ExamURLType url_type = 4; // [required] URL 类型
+  
+  // [required] gexam会在这个url后面加上"/[url_type]/[exam_id]"作为回调目标URL，
+  // 当gee(ProScheduler)完成后回调这个URL
+  // 业务系统需要响应该回调，并把[url_type]和[exam_id]通过grpc发回给exam
+  string term_url_base = 5; // [required] URL基础地址
+}
+
+message URLResponse {
+  string url = 1;
+}
+
+// ExamUrlCallbackReq 里面的参数都是从callback的完整url，
+// 减去 term_url_base 前缀后的path中解析出来的
+// 例如：term_url_base=http://localhost:8080/callback
+// callback的完整url=/callback/schd/123
+// 那么 exam_id=123, url_type=schd
+// 需要这个接口是因为prometric这个外部考试平台它的事件通知很慢（几分钟延时）
+// 因此我们需要有个机制，当用户点击预约/改期/取消链接进入页面后，
+// 页面完成后，主动通过这个接口通知gexam
+message ExamUrlCallbackReq {
+  // [required] 业务系统持有的唯一考试 ID
+  string exam_id = 1;
+  // [required] url_type : 
+  // 线下考试: schd / reschd 
+  // 线上考试：proctorsch/ proctorresch
+  // 取消考试：cancel
+  string url_type = 2;
+  // [optional] callback body是完整的json
+  string callback_body = 3;
+}
+
+message ExamUrlCallbackRsp {
+  // [required] 业务系统持有的唯一考试 ID
+  string exam_id = 1;
+  // [required] exam status
+  string exam_status = 2;
+}
+
+message GetPipelineCertificateViewURLReq {
+  string candidate_ulid = 1; // 考生 ULID [required]
+  string pipeline_ulid = 2;  // pipeline 实例 ULID [required]
+}
+
+message GetPipelineCertificateViewURLRsp {
+  string view_url = 1; // PDF 证书的 viewURL
+}
+
+message ValidateRetakeEligibilityReq {
+  string candidate_ulid = 1;      // 考生 ULID [required]
+  string course_unit_ulid = 2;    // course unit 实例 ULID [required]
+  string course_unit_cc_ulid = 3; // course unit 配置 ULID [required]
+}
+
+message ValidateRetakeEligibilityRsp {
+  bool eligible = 1;              // 是否符合重考资格 (EXAM_FAILED) [required]
+  uint32 next_retried_count = 2;  // 下一次重考的次数 (当前 RetriedCount + 1) [required]
+  string message = 3;             // 校验失败或成功的人类可读说明 [required]
+}
+
+message AdminPurgeCandidatePipelineRequest {
+  string candidate_ulid = 1;      // candidate ULID [required]
+  string pipeline_ulid = 2;       // pipeline instance ULID [required]
+  string admin_id = 3;            // admin user ID [required]
+}
+
+message AdminPurgeCandidatePipelineResponse {
+  bool success = 1;
+  string message = 2;
+}

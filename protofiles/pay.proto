@@ -1,0 +1,651 @@
+syntax = "proto3";
+
+package gpay;
+
+option go_package = "cftp/gpay";
+
+// =============================================================================
+// PayService — gpay 统一支付网关 (支付 + 订阅 + 发票 + 优惠券)
+// =============================================================================
+// 所有金额单位为分 (cents)，int64。
+// 所有时间字段为 Unix 秒级时间戳，int64。
+// [required] = 业务方必须提供，[optional] = 可空或使用默认值。
+// [conditional] = 特定 payment_mode 下必填。
+// =============================================================================
+
+service PayService {
+  // ---- Order (统一入口) ----
+  // PreviewOrder 价格预览：通过 Stripe draft invoice 精确计算最终价格和减免明细。
+  // 结果缓存到 preview_sessions，30min 内重复请求直接返回缓存不调 Stripe。
+  // CreateOrder 时复用 draft invoice finalize，确保展示价 = 实际扣款。
+  rpc PreviewOrder(PreviewOrderRequest) returns (PreviewOrderResponse);
+  // CreateOrder 创建支付订单，根据 order_type + payment_mode 路由到不同 Stripe API。
+  rpc CreateOrder(CreateOrderRequest) returns (CreateOrderResponse);
+  // GetOrder 按 order_id / session_id / invoice_id 查询订单状态。
+  // 返回的是 gpay DB 缓存的状态，但在底层会尝试实时从 Stripe 查询补充优惠券和支付方式等详细信息 (Stripe 故障不影响主要状态返回)。
+  // 实时通知请订阅 NATS 事件。
+  rpc GetOrder(GetOrderRequest) returns (GetOrderResponse);
+  // ListCustomerOrders 分页查询某用户的订单列表，支持按状态筛选。
+  rpc ListCustomerOrders(ListCustomerOrdersRequest) returns (ListCustomerOrdersResponse);
+  // CancelOrder 取消未完成的订单。终态订单拒绝取消。
+  rpc CancelOrder(CancelOrderRequest) returns (CancelOrderResponse);
+
+  // ---- Subscription ----
+  // GetSubscription 查询 Stripe 订阅状态。时间字段来源于 Stripe API，不受本地时钟影响。
+  rpc GetSubscription(GetSubscriptionRequest) returns (GetSubscriptionResponse);
+  // CancelSubscription 取消订阅，默认在当前计费周期结束时取消 (PERIOD_END)。
+  // 注意: 立即取消 (IMMEDIATE) 会导致用户立即失去服务，谨慎使用。
+  rpc CancelSubscription(CancelSubscriptionRequest) returns (CancelSubscriptionResponse);
+
+  // ---- Invoice ----
+  // GetInvoice 查询发票。支持按 order_id 或 stripe_invoice_id 查询。
+  rpc GetInvoice(GetInvoiceRequest) returns (GetInvoiceResponse);
+
+  // ---- Receipt ----
+  // GetReceipt 查询收据。支持按 order_id 或 stripe_payment_intent_id 查询。
+  rpc GetReceipt(GetReceiptRequest) returns (GetReceiptResponse);
+
+  // ---- Coupon ----
+  // VerifyCoupon 向 Stripe 验证优惠券有效性，返回折扣信息。优惠券由 Stripe 管理，gpay 只做验证代理。
+  rpc VerifyCoupon(VerifyCouponRequest) returns (VerifyCouponResponse);
+  // GetOrderCoupons 获取订单已应用的优惠券列表。
+  rpc GetOrderCoupons(GetOrderCouponsRequest) returns (GetOrderCouponsResponse);
+
+
+  // ---- Billing Portal ----
+  // CreateBillingPortalSession 创建 Stripe Customer Portal 会话，返回托管页面 URL。
+  // 用户可在 Portal 中管理支付方式、查看账单历史、管理订阅。
+  // 前置条件: 该 customer 必须已有 stripe_customer_id（首次购买时自动创建）。
+  rpc CreateBillingPortalSession(CreateBillingPortalSessionRequest) returns (CreateBillingPortalSessionResponse);
+
+  // ---- Verify (调试/测试) ----
+  // VerifyProduct 向 Stripe 验证产品是否存在并返回详情。
+  rpc VerifyProduct(VerifyProductRequest) returns (VerifyProductResponse);
+  // VerifyPrice 向 Stripe 验证价格是否存在并返回详情。
+  rpc VerifyPrice(VerifyPriceRequest) returns (VerifyPriceResponse);
+
+  // ---- Admin Queries (管理端接口) ----
+  // ListSubscriptions 分页查询订阅列表
+  rpc ListSubscriptions(ListSubscriptionsRequest) returns (ListSubscriptionsResponse);
+  // ListInvoices 分页查询发票列表
+  rpc ListInvoices(ListInvoicesRequest) returns (ListInvoicesResponse);
+  // ListWebhookEvents 分页查询本地记录的 Webhook 事件
+  rpc ListWebhookEvents(ListWebhookEventsRequest) returns (ListWebhookEventsResponse);
+  // GetWebhookEventDetail 查询 Webhook 事件详情
+  rpc GetWebhookEventDetail(GetWebhookEventDetailRequest) returns (GetWebhookEventDetailResponse);
+  // ListOrderItems 查询订单条目列表
+  rpc ListOrderItems(ListOrderItemsRequest) returns (ListOrderItemsResponse);
+  // ListOrders 分页查询所有订单列表
+  rpc ListOrders(ListOrdersRequest) returns (ListOrdersResponse);
+}
+
+// =============================================================================
+// 枚举定义
+// =============================================================================
+
+// OrderType 订单类型，决定 Stripe API 调用路径。
+// Stripe 约束: one_time 使用 Checkout Session (mode=payment) 或手动 Invoice；
+//             subscription 使用 Checkout Session (mode=subscription) 或 Subscription API；
+//             mixed 使用 Subscription API + add_invoice_items 合并到首期发票。
+enum OrderType {
+  ORDER_TYPE_UNSPECIFIED = 0;
+  ORDER_TYPE_ONE_TIME    = 1;  // 一次性支付 (course, certification)
+  ORDER_TYPE_SUBSCRIPTION = 2; // 纯订阅 (membership)
+  ORDER_TYPE_MIXED       = 3;  // 订阅 + 一次性商品混合 (membership + course)
+}
+
+// PaymentMode 支付展示形式，决定前端如何呈现支付 UI。
+// Stripe 约束: CHECKOUT_HOSTED 返回 checkout_url 供业务方跳转；
+//             CHECKOUT_EMBEDDED 返回 client_secret 供 Stripe.js 嵌入 iframe；
+//             ELEMENTS 返回 client_secret 供业务方使用 PaymentElement 自建表单。
+enum PaymentMode {
+  PAYMENT_MODE_UNSPECIFIED  = 0;
+  PAYMENT_MODE_CHECKOUT_HOSTED = 1;  // 跳转 Stripe 托管支付页
+  PAYMENT_MODE_CHECKOUT_EMBEDDED = 2; // Stripe 结账界面以 iframe 嵌入
+  PAYMENT_MODE_ELEMENTS      = 3;  // 完全自定义的 PaymentElement 表单
+}
+
+// OrderStatus 订单状态，对应 DB payment_requests.request_status。
+// 状态机: pending_create → pending_payment → completed/cancelled/failed
+// Stripe 约束: pending_create 是 DB 已落库但 Stripe 对象尚未确认创建的状态，
+//             用于处理 Stripe API 调用网络超时但 Stripe 侧实际已成功的场景。
+//             Reconciler 会扫描此状态，搜索 Stripe 侧的孤儿对象并回填。
+enum OrderStatus {
+  ORDER_STATUS_UNSPECIFIED    = 0;
+  ORDER_STATUS_PENDING_CREATE = 1;  // DB 已落库，等待 Stripe 对象创建确认
+  ORDER_STATUS_PENDING_PAYMENT = 2; // Stripe 对象已创建，等待支付完成
+  ORDER_STATUS_COMPLETED      = 3;  // 支付完成 (终端)
+  ORDER_STATUS_CANCELLED      = 4;  // 已取消 (终端)
+  ORDER_STATUS_FAILED         = 5;  // 支付失败 (终端)
+}
+
+// CancelMode 订阅取消模式。
+// Stripe 约束: PERIOD_END = 设置 cancel_at_period_end=true，当前周期结束后自动取消；
+//             IMMEDIATE = 调用 subscription.Cancel() + invoice_now，立即终止。
+//             推荐使用 PERIOD_END，用户已付费的周期不应被剥夺。
+enum CancelMode {
+  CANCEL_MODE_UNSPECIFIED = 0;
+  CANCEL_MODE_PERIOD_END  = 1;  // 当前周期结束时取消 (推荐)
+  CANCEL_MODE_IMMEDIATE   = 2;  // 立即取消 (谨慎使用)
+}
+
+// =============================================================================
+// 共享类型
+// =============================================================================
+
+// LineItem 商品明细条目，同时用于向 Stripe 创建订单和存入 order_items 表。
+// 所有商品都必须提供 stripe_product_id 和 stripe_price_id，缺一不可，
+// 确保 product-restricted coupon 能正确匹配。
+message LineItem {
+  string name              = 1; // 商品名称 [required]
+  string description       = 2; // 商品描述 [required]
+  int64  unit_amount       = 3; // 单价（分） [required]
+  int64  quantity          = 4; // 数量 [required]
+  string currency          = 5; // 货币代码，如 "usd" [required]
+  string item_type         = 6; // 业务商品类型: "course" | "membership" | "certification" [required]
+  string item_id           = 7; // 业务商品 UUID [required]
+  string stripe_price_id   = 8; // Stripe Price ID [required]
+  string stripe_product_id = 9; // Stripe Product ID [required]
+}
+
+// CouponInfo 优惠券信息，来源于 Stripe Coupon API 返回值。
+message CouponInfo {
+  string code               = 1; // 优惠券码 [required]
+  string name               = 2; // 优惠券名称 [required]
+  double percent_off        = 3; // 百分比折扣，如 20.0 表示 20% (与 amount_off 互斥) [optional]
+  int64  amount_off         = 4; // 固定金额折扣（分）(与 percent_off 互斥) [optional]
+  string currency           = 5; // 货币代码 [optional]
+  string duration           = 6; // 有效期类型: once/forever/repeating [required]
+  int64  duration_in_months = 7; // repeating 类型时的持续月数 [optional]
+}
+
+// =============================================================================
+// PreviewOrder — 价格预览
+// =============================================================================
+
+// PreviewOrderRequest 价格预览请求。
+// 不创建持久化对象。临时创建 Stripe draft invoice 完成精确计算，结果缓存 30min。
+//
+// 计算策略 (保证与 CreateOrder 最终结果一致):
+//   gpay 临时创建 Stripe InvoiceItems + draft Invoice，将所有 coupons 作为 discounts
+//   应用到该 draft invoice，然后直接读取 Stripe 返回的 totals 和 total_discount_amounts[]。
+//   Stripe 自己计算折扣叠加、互斥、顺序，gpay 不做任何本地计算。
+//   CreateOrder 时复用 draft invoice finalize，确保展示价 = 实际扣款。
+message PreviewOrderRequest {
+  string order_id               = 1;  // 业务订单号 (ULID)，同时作为缓存 key。CreateOrder 复用同一 order_id [required]
+  repeated LineItem line_items  = 2;  // 商品列表 [required]
+  repeated string coupon_codes  = 3;  // 优惠券码列表 [optional]
+  string customer_id            = 4;  // 业务用户 UUID，用于查找 stripe_customer_id [required]
+  string currency               = 5;  // 货币代码，默认 "usd" [optional]
+  OrderType order_type          = 6;  // 订单类型。决定 Stripe preview 参数映射方式 [required]
+}
+
+// PreviewOrderResponse 价格预览响应。
+// 所有金额直接从 Stripe draft invoice 读取，与最终 CreateOrder 结果一致。
+// breakdown 来源于 Stripe invoice.total_discount_amounts[]，每张券的实际减免。
+message PreviewOrderResponse {
+  int64  subtotal                    = 1;  // 商品原价总和（分），来自 Stripe invoice.subtotal [required]
+  int64  discount_total              = 2;  // 优惠总减免（分），来自 Stripe invoice.total_discount_amounts 总和 [required]
+  int64  tax_total                   = 3;  // 税额（分），来自 Stripe invoice.tax [required]
+  int64  total                       = 4;  // 最终应付（分），来自 Stripe invoice.total [required]
+  string currency                    = 5;  // 货币代码 [required]
+  repeated CouponDiscount breakdown  = 6;  // 逐券减免明细，来自 Stripe discount 对象 [optional]
+  repeated InvalidCoupon invalid     = 7;  // 无效的券及原因 [optional]
+}
+
+// CouponDiscount 单张优惠券的减免明细。
+// 数据来源: Stripe invoice.discounts[] 和 invoice.total_discount_amounts[]。
+//           gpay 不做任何计算，只做数据映射。
+message CouponDiscount {
+  string code          = 1;  // 优惠券码 [required]
+  string name          = 2;  // 优惠券名称，来自 Stripe coupon.name [required]
+  string type          = 3;  // "percentage" / "fixed_amount" [required]
+  double percent_off   = 4;  // 百分比 (type=percentage，来自 Stripe) [optional]
+  int64  amount_off    = 5;  // 固定减免分 (type=fixed_amount，来自 Stripe) [optional]
+  int64  discount      = 6;  // 本券实际减免（分），来自 Stripe total_discount_amounts 中此项的 amount [required]
+  string description   = 7;  // 可读描述，如 "NEWUSER (20%): -¥20.00" [required]
+}
+
+// InvalidCoupon 无效优惠券信息。
+message InvalidCoupon {
+  string code    = 1;  // 优惠券码 [required]
+  string reason  = 2;  // 无效原因，如 "Coupon has expired" [required]
+}
+
+// =============================================================================
+// Order — 订单创建与查询
+// =============================================================================
+
+// CreateOrderRequest 创建支付订单请求。
+// Stripe 约束: order_id 同时也是 Stripe API 的 Idempotency Key (幂等键)。
+//             同一 order_id 重试不会在 Stripe 侧创建重复对象。
+//             如果 order_id 已被使用且本地状态为终态，返回 ALREADY_EXISTS。
+//             如果 order_id 已被使用且仍在 pending，返回现有订单信息。
+message CreateOrderRequest {
+  string order_id               = 1;  // 业务订单号，ULID 26 字符，同时作为 Stripe Idempotency Key [required]
+  string business_unit          = 2;  // 业务系统标识，如 "mall", "member", "exam" [required]
+  string customer_id            = 3;  // 业务侧用户 UUID，gpay 通过它查找或创建 Stripe Customer [required]
+  string customer_email         = 4;  // 客户邮箱，Stripe 需要用于发送收据邮件 [required]
+  OrderType order_type          = 5;  // 订单类型 [required]
+  PaymentMode payment_mode      = 6;  // 支付展示形式 [required]
+  repeated LineItem line_items  = 7;  // 商品列表，至少 1 项 [required]
+  repeated string coupon_codes  = 8;  // Stripe 优惠券码列表 [optional]
+  map<string, string> metadata  = 9;  // 业务方透传的元数据，会写入 Stripe 对象的 metadata [optional]
+  string success_url            = 10; // 支付成功后的跳转地址 (CHECKOUT_HOSTED/EMBEDDED 必填) [conditional]
+  string cancel_url             = 11; // 用户取消支付后的跳转地址 (CHECKOUT_HOSTED 必填) [conditional]
+  string customer_name          = 12; // 客户姓名，写入 Stripe Customer.name（首次创建时），便于 Dashboard 识别 [optional]
+  string ref_entity_type        = 13; // 关联实体类型 [optional]
+  string ref_entity_id          = 14; // 关联实体 ID [optional]
+}
+
+// CreateOrderResponse 创建订单响应。
+// Stripe 约束: 根据 payment_mode 返回不同凭证 ——
+//   CHECKOUT_HOSTED → checkout_url (业务方让用户跳转到此 URL)
+//   CHECKOUT_EMBEDDED → client_secret (业务方用 Stripe.js 初始化嵌入结账)
+//   ELEMENTS → client_secret (业务方用 Stripe PaymentElement 渲染支付表单)
+message CreateOrderResponse {
+  string order_id               = 1;  // 订单号 [required]
+  OrderStatus status            = 2;  // 订单状态，创建后为 PENDING_CREATE 或 PENDING_PAYMENT [required]
+  OrderType order_type          = 3;  // 订单类型 [required]
+  PaymentMode payment_mode      = 4;  // 支付展示形式 [required]
+  string checkout_url           = 5;  // Stripe 托管支付页 URL (CHECKOUT_HOSTED 时填充) [optional]
+  string client_secret          = 6;  // 客户端密钥，用于初始化 Stripe.js (CHECKOUT_EMBEDDED/ELEMENTS 时填充) [optional]
+  string stripe_invoice_id      = 7;  // Stripe Invoice ID，后续查询发票用 [required]
+  string stripe_subscription_id = 8;  // Stripe Subscription ID (仅 subscription/mixed 有值) [optional]
+  int64  amount                 = 9;  // 最终金额（分） [required]
+  string currency               = 10; // 货币代码 [required]
+}
+
+// GetOrderRequest 查询订单请求。
+// 使用 oneof 支持多种查询方式。
+message GetOrderRequest {
+  oneof lookup {
+    string order_id            = 1; // 业务订单号 [required 如果选此项]
+    string stripe_session_id   = 2; // Stripe Checkout Session ID (cs_xxx) [required 如果选此项]
+    string stripe_invoice_id   = 3; // Stripe Invoice ID (in_xxx) [required 如果选此项]
+  }
+}
+
+// GetOrderResponse 订单详情响应。
+// 包含 gpay 本地 DB 缓存的状态，不做实时 Stripe 查询。
+// Stripe 约束: 订单状态仅由 webhook (invoice.paid) 或 Reconciler 更新。
+//             业务方如需实时通知请订阅 NATS 事件，不要轮询此接口。
+message GetOrderResponse {
+  string order_id               = 1;  // 订单号 [required]
+  OrderStatus status            = 2;  // 当前状态 [required]
+  OrderType order_type          = 3;  // 订单类型 [required]
+  PaymentMode payment_mode      = 4;  // 支付展示形式 [required]
+  int64  amount                 = 5;  // 金额（分） [required]
+  string currency               = 6;  // 货币代码 [required]
+  string checkout_url           = 7;  // Stripe 支付页 URL [optional]
+  string client_secret          = 8;  // 客户端密钥 [optional]
+  string stripe_invoice_id      = 9;  // Stripe Invoice ID [optional]
+  string stripe_subscription_id = 10; // Stripe Subscription ID [optional]
+  string stripe_payment_status  = 11; // Stripe 支付状态 (unpaid/paid) [optional]
+  int64  paid_at                = 12; // 支付完成时间 (Unix 秒) [optional]
+  string error_msg              = 13; // 失败原因 (failed 状态时有值) [optional]
+  repeated LineItem line_items  = 14; // 商品明细 [required]
+  repeated CouponInfo coupons   = 15; // 已应用的优惠券 [optional]
+  // Deprecated: receipt_url is no longer returned in GetOrder. Use GetReceipt instead.
+  // string receipt_url            = 16;
+  string payment_method_type    = 17; // 支付方式: card/alipay/wechat_pay... [optional]
+  string payment_method_last4   = 18; // 卡号末四位 [optional]
+  string payment_method_brand   = 19; // 卡品牌: visa/mastercard/amex... [optional]
+  string ref_entity_type        = 20; // 关联实体类型 [optional]
+  string ref_entity_id          = 21; // 关联实体 ID [optional]
+}
+
+// CancelOrderRequest 取消订单请求。
+// Stripe 约束: 取消行为取决于 payment_mode ——
+//   CHECKOUT_HOSTED/EMBEDDED → 调用 session.Expire() 使 Checkout Session 过期；
+//   ELEMENTS + one_time → 调用 invoice.Void() void 发票并取消 PaymentIntent；
+//   ELEMENTS + subscription → 调用 subscription.Cancel(invoice_now=true)。
+//   终态订单 (completed/cancelled/failed) 拒绝取消，返回 FAILED_PRECONDITION。
+message CancelOrderRequest {
+  string order_id = 1; // 业务订单号 [required]
+}
+
+message CancelOrderResponse {
+  bool   success = 1; // 是否成功 [required]
+  string message = 2; // 结果消息，失败时包含原因 [required]
+}
+
+// ListCustomerOrdersRequest 查询用户订单列表。
+// page_token 为上一页返回的 next_page_token，首次查询不传。
+message ListCustomerOrdersRequest {
+  string customer_id        = 1; // 业务用户 UUID [required]
+  OrderStatus status_filter = 2; // 按状态筛选，不传则返回所有 [optional]
+  int32  page_size          = 3; // 每页条数，默认 20，最大 100 [optional]
+  string page_token         = 4; // 分页游标，首次查询不传 [optional]
+}
+
+message ListCustomerOrdersResponse {
+  repeated OrderSummary orders = 1; // 订单摘要列表 [required]
+  string next_page_token       = 2; // 下一页游标，空字符串表示最后一页 [required]
+  int32  total_count           = 3; // 符合条件的总记录数 [required]
+}
+
+// OrderSummary 订单摘要，列表场景使用，字段较 GetOrderResponse 精简。
+message OrderSummary {
+  string order_id               = 1;  // 订单号 [required]
+  OrderStatus status            = 2;  // 状态 [required]
+  OrderType order_type          = 3;  // 类型 [required]
+  PaymentMode payment_mode      = 4;  // 支付形式 [required]
+  int64  amount                 = 5;  // 金额（分） [required]
+  string currency               = 6;  // 货币 [required]
+  string stripe_invoice_id      = 7;  // 发票 ID [optional]
+  string stripe_subscription_id = 8;  // 订阅 ID [optional]
+  int64  paid_at                = 9;  // 支付时间 (Unix 秒) [optional]
+  int64  created_at             = 10; // 创建时间 (Unix 秒) [required]
+}
+
+// =============================================================================
+// Subscription — 订阅管理
+// =============================================================================
+
+// GetSubscriptionRequest 查询订阅请求。
+// Stripe 约束: 返回的时间戳 (current_period_start/end) 直接来源于 Stripe API，
+//             gpay 不做任何本地日期计算。这是 PHP 代码中最重要的教训。
+message GetSubscriptionRequest {
+  oneof lookup {
+    string stripe_subscription_id = 1; // Stripe 订阅 ID (sub_xxx) [required 如果选此项]
+    string order_id               = 2; // 通过初始订单 ID 查询关联订阅 [required 如果选此项]
+  }
+}
+
+message GetSubscriptionResponse {
+  string stripe_subscription_id  = 1;  // Stripe 订阅 ID [required]
+  string stripe_status           = 2;  // Stripe 原生状态 [required]
+  string stripe_price_id         = 3;  // 当前 Stripe Price ID [optional]
+  int64  current_period_start    = 4;  // 当前计费周期开始 (Unix 秒，来自 Stripe) [required]
+  int64  current_period_end      = 5;  // 当前计费周期结束 (Unix 秒，来自 Stripe) [required]
+  bool   cancel_at_period_end    = 6;  // 是否已在周期末标记取消 [required]
+  int64  canceled_at             = 7;  // 取消时间 (Unix 秒) [optional]
+  int64  ended_at                = 8;  // 实际结束时间 (Unix 秒) [optional]
+  string order_id                = 9;  // 初始创建订单 ID [optional]
+  string stripe_latest_invoice_id = 10; // 最新产生的发票 ID [optional]
+}
+
+// CancelSubscriptionRequest 取消订阅请求。
+// Stripe 约束: PERIOD_END 模式调用 stripe.Subscriptions.Update(cancel_at_period_end=true)，
+//             用户已付费的周期仍然有效，周期结束后自动终止。
+//             IMMEDIATE 模式调用 stripe.Subscriptions.Cancel(invoice_now=true, prorate=false)，
+//             立即终止订阅，不按比例退款。
+message CancelSubscriptionRequest {
+  string stripe_subscription_id = 1; // Stripe 订阅 ID [required]
+  CancelMode cancel_mode        = 2; // 取消模式，默认 PERIOD_END [optional]
+}
+
+message CancelSubscriptionResponse {
+  bool   success = 1; // 是否成功 [required]
+  string message = 2; // 结果消息 [required]
+}
+
+// =============================================================================
+// Invoice — 发票查询与下载
+// =============================================================================
+
+// GetInvoiceRequest 查询发票请求。
+// 按 order_id 或 stripe_invoice_id 查询。
+// Stripe 约束: 续费产生的发票没有 order_id，只能通过 stripe_invoice_id 查询。
+message GetInvoiceRequest {
+  oneof lookup {
+    string order_id           = 1; // 业务订单号 [required 如果选此项]
+    string stripe_invoice_id  = 2; // Stripe Invoice ID (in_xxx) [required 如果选此项]
+  }
+}
+
+// GetInvoiceResponse 发票详情。
+// Stripe 约束: period_start/period_end 仅订阅发票有值，一次性支付发票这两个字段为空。
+//             hosted_invoice_url 是 Stripe 托管的发票页面，永久有效。
+//             invoice_pdf_url 可能过期，gpay 通过 DownloadInvoicePdf 缓存。
+message GetInvoiceResponse {
+  string stripe_invoice_id  = 1;  // Stripe Invoice ID [required]
+  string invoice_number     = 2;  // 发票编号 (如 1A2B3C-0001) [optional]
+  string status             = 3;  // Stripe 发票状态: draft/open/paid/void/uncollectible [required]
+  int64  subtotal           = 4;  // 小计（分） [required]
+  int64  tax                = 5;  // 税额（分） [required]
+  int64  total              = 6;  // 总额（分） [required]
+  int64  amount_paid        = 7;  // 已付金额（分） [required]
+  string currency           = 8;  // 货币代码 [required]
+  string hosted_invoice_url = 9;  // Stripe 托管发票页面 URL [optional]
+  int64  period_start       = 10; // 计费周期开始 (Unix 秒，订阅发票有值) [optional]
+  int64  period_end         = 11; // 计费周期结束 (Unix 秒，订阅发票有值) [optional]
+  int64  paid_at            = 12; // 支付时间 (Unix 秒) [optional]
+  string order_id           = 13; // 关联订单 ID (续费发票为 NULL) [optional]
+  string invoice_pdf_url    = 14; // Stripe 发票 PDF 直接下载 URL [optional]
+}
+
+// =============================================================================
+// Receipt — 收据查询
+// =============================================================================
+
+// GetReceiptRequest 查询收据请求。
+message GetReceiptRequest {
+  oneof lookup {
+    string order_id                 = 1; // 业务订单号 [required 如果选此项]
+    string stripe_payment_intent_id = 2; // Stripe Payment Intent ID (pi_xxx) [required 如果选此项]
+  }
+}
+
+// GetReceiptResponse 收据详情。
+message GetReceiptResponse {
+  string stripe_payment_intent_id = 1; // Stripe Payment Intent ID [required]
+  string receipt_url              = 2; // Stripe Charge receipt_url，付款凭证 URL [required]
+  string order_id                 = 3; // 关联订单 ID [optional]
+}
+
+// =============================================================================
+// Coupon — 优惠券验证
+// =============================================================================
+
+// VerifyCouponRequest 验证优惠券请求。
+// Stripe 约束: 优惠券存放在 Stripe，gpay 不做本地优惠券管理。
+//             customer_id 用于检查会员专属优惠券的业务规则。
+//             item_types 用于验证优惠券是否适用于当前商品类型。
+message VerifyCouponRequest {
+  string coupon_code           = 1; // 优惠券码 [required]
+  string customer_id           = 2; // 业务用户 UUID，用于会员专属券校验 [optional]
+  repeated string item_types   = 3; // 商品类型列表，检查适用范围 [optional]
+}
+
+message VerifyCouponResponse {
+  bool   valid              = 1; // 是否有效 [required]
+  string message            = 2; // 无效时的原因 (如 "Coupon has expired") [required]
+  string coupon_id          = 3; // Stripe Coupon ID [required]
+  string name               = 4; // 优惠券名称 [required]
+  double percent_off        = 5; // 百分比折扣 (与 amount_off 互斥) [optional]
+  int64  amount_off         = 6; // 固定金额折扣（分）(与 percent_off 互斥) [optional]
+  string currency           = 7; // 货币代码 [optional]
+  string duration           = 8; // 有效期类型: once/forever/repeating [required]
+  int64  duration_in_months = 9; // repeating 类型时的月数 [optional]
+}
+
+message GetOrderCouponsRequest {
+  string order_id = 1; // 业务订单号 [required]
+}
+
+message GetOrderCouponsResponse {
+  repeated string coupon_codes = 1; // 订单已应用的优惠券列表 [optional]
+}
+
+// =============================================================================
+
+// Billing Portal — Stripe 客户计费门户
+// =============================================================================
+
+// CreateBillingPortalSessionRequest 创建计费门户会话请求。
+// Stripe 约束: 调用此接口前该 customer 必须有 stripe_customer_id。
+//             如果是全新用户 (从未购买)，需先完成一次支付。
+//             portal_url 为一次性 URL，用户访问后即失效。
+message CreateBillingPortalSessionRequest {
+  string customer_id = 1; // 业务用户 UUID，通过它查找关联的 stripe_customer_id [required]
+  string return_url  = 2; // 用户从 Portal 返回时的跳转地址 [required]
+}
+
+message CreateBillingPortalSessionResponse {
+  string portal_url = 1; // Stripe 托管计费管理页面 URL，让用户跳转到此地址 [required]
+}
+
+// =============================================================================
+// Verify — 调试/测试，向 Stripe 验证 Product/Price
+// =============================================================================
+
+message VerifyProductRequest {
+  string product_id = 1; // Stripe Product ID (prod_xxx) [required]
+}
+
+message VerifyProductResponse {
+  bool   valid       = 1; // product exists and is active
+  string message     = 2; // human-readable result
+  string product_id  = 3; // Stripe Product ID
+  string name        = 4; // product name from Stripe
+  bool   active      = 5; // Stripe product.active
+  string description = 6; // product description
+}
+
+message VerifyPriceRequest {
+  string price_id = 1; // Stripe Price ID (price_xxx) [required]
+}
+
+message VerifyPriceResponse {
+  bool   valid          = 1;  // price exists and is active
+  string message        = 2;  // human-readable result
+  string price_id       = 3;  // Stripe Price ID
+  bool   active         = 4;  // Stripe price.active
+  int64  unit_amount    = 5;  // unit amount in cents
+  string currency       = 6;  // currency code
+  string product_id     = 7;  // parent Stripe Product ID
+  string type           = 8;  // one_time / recurring
+  int64  interval_count = 9;  // billing interval count (recurring prices)
+  string interval       = 10; // day / week / month / year
+}
+
+// =============================================================================
+// Admin Queries — messages
+// =============================================================================
+
+message SubscriptionSummary {
+  string order_id = 1;
+  string stripe_subscription_id = 2;
+  string customer_id = 3;
+  int64 amount = 4;
+  string currency = 5;
+  OrderStatus status = 6;
+  string stripe_invoice_id = 7;
+  int64 paid_at = 8;
+  int64 created_at = 9;
+}
+
+message ListSubscriptionsRequest {
+  string customer_id = 1; // optional
+  OrderStatus status = 2; // optional
+  uint32 page = 3;
+  uint32 page_size = 4;
+}
+
+message ListSubscriptionsResponse {
+  repeated SubscriptionSummary subscriptions = 1;
+  uint32 total = 2;
+}
+
+message InvoiceSummary {
+  string stripe_invoice_id = 1;
+  string order_id = 2;
+  string customer_id = 3;
+  int64 amount = 4;
+  string currency = 5;
+  OrderStatus status = 6;
+  int64 paid_at = 7;
+  int64 created_at = 8;
+}
+
+message ListInvoicesRequest {
+  string customer_id = 1; // optional
+  OrderStatus status = 2; // optional
+  uint32 page = 3;
+  uint32 page_size = 4;
+}
+
+message ListInvoicesResponse {
+  repeated InvoiceSummary invoices = 1;
+  uint32 total = 2;
+}
+
+message WebhookEventSummary {
+  uint64 id = 1;
+  string event_id = 2;
+  string event_type = 3;
+  string processed_status = 4;
+  int64 stripe_created_at = 5;
+  int64 created_at = 6;
+}
+
+message WebhookEventDetail {
+  uint64 id = 1;
+  string event_id = 2;
+  string event_type = 3;
+  string payload_json = 4;
+  string processed_status = 5;
+  string error_message = 6;
+  int64 stripe_created_at = 7;
+  int64 created_at = 8;
+}
+
+message ListWebhookEventsRequest {
+  string event_type = 1; // optional
+  string processed_status = 2; // optional
+  int64 start_time = 3; // optional Unix timestamp
+  int64 end_time = 4; // optional Unix timestamp
+  uint32 page = 5;
+  uint32 page_size = 6;
+}
+
+message ListWebhookEventsResponse {
+  repeated WebhookEventSummary events = 1;
+  uint32 total = 2;
+}
+
+message GetWebhookEventDetailRequest {
+  string event_id = 1;
+}
+
+message GetWebhookEventDetailResponse {
+  WebhookEventDetail event = 1;
+}
+
+message OrderItemSummary {
+  uint64 id = 1;
+  string order_id = 2;
+  string item_type = 3;
+  string item_id = 4;
+  string title = 5;
+  int64 base_price = 6;
+  int32 discount_percent = 7;
+  int64 discount_amount = 8;
+  int64 final_price = 9;
+  int32 quantity = 10;
+  string stripe_price_id = 11;
+  string stripe_product_id = 12;
+  int64 created_at = 13;
+}
+
+message ListOrderItemsRequest {
+  string order_id = 1;
+}
+
+message ListOrderItemsResponse {
+  repeated OrderItemSummary items = 1;
+}
+
+message ListOrdersRequest {
+  string customer_id = 1;      // optional
+  OrderStatus status_filter = 2; // optional
+  uint32 page = 3;
+  uint32 page_size = 4;
+}
+
+message ListOrdersResponse {
+  repeated OrderSummary orders = 1;
+  uint32 total = 2;
+}

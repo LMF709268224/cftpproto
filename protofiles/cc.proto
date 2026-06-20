@@ -1,0 +1,285 @@
+syntax = "proto3";
+
+package gcc;
+
+option go_package = "cftp/gcc";
+import "google/protobuf/empty.proto";
+
+service CCService {
+  // --- 结构化变更接口 (影响版本号) ---
+  
+  // 创建管线草稿 (从现有版本复制或全新创建)
+  rpc CreatePipelineDraft(CreatePipelineDraftRequest) returns (PipelineConfig);
+  // 从现有管线版本深拷贝创建新草稿
+  rpc DuplicatePipelineDraft(DuplicatePipelineDraftRequest) returns (PipelineConfig);
+  // 更新管线结构 (仅限草稿态，增加/删除/排序 Stage 或 Unit，修改资格要求)
+  rpc UpdatePipelineStructure(UpdatePipelineStructureRequest) returns (PipelineConfig);
+  // 发布新版本 (全量锁定快照，is_current 置为 1，版本号 +1)
+  rpc PublishPipeline(PublishPipelineRequest) returns (PipelineConfig);
+  // 废弃管线 (仅限 Active 状态，将其置为 Deprecated 以停止购买)
+  rpc DeprecatePipeline(DeprecatePipelineRequest) returns (google.protobuf.Empty);
+  // 删除管线草稿 (仅限草稿态)
+  rpc DeletePipeline(DeletePipelineRequest) returns (google.protobuf.Empty);
+
+  // 更新描述性信息 (实时生效，不产生新版本)
+  rpc UpdatePipelineMetadata(UpdateMetadataRequest) returns (google.protobuf.Empty);
+
+  // --- 查询接口 ---
+  
+  rpc GetPipeline(GetPipelineRequest) returns (PipelineConfig);
+  rpc GetPipelineDetail(GetPipelineDetailRequest) returns (PipelineConfig);
+  rpc GetPipelineFinalEligibility(GetPipelineFinalEligibilityRequest) returns (GetPipelineFinalEligibilityResponse);
+  rpc ListPipelines(ListPipelinesRequest) returns (ListPipelinesResponse);
+  rpc ListPipelinesAdmin(ListPipelinesAdminRequest) returns (ListPipelinesResponse);
+
+  rpc ListStages(ListStagesRequest) returns (ListStagesResponse);
+  rpc GetStageDetail(GetStageDetailRequest) returns (StageConfig);
+
+  rpc ListUnits(ListUnitsRequest) returns (ListUnitsResponse);
+  rpc GetUnitDetail(GetUnitDetailRequest) returns (UnitConfig);
+
+  // --- S3 预签名 URL 接口 ---
+  rpc CreateUploadURL(CreateUploadURLRequest) returns (CreateUploadURLResponse);
+  rpc GetPublicURL(GetPublicURLRequest) returns (GetPublicURLResponse);
+}
+
+// --- 核心消息模型 ---
+
+message PipelineConfig {
+  string pipeline_id = 1;      // ULID (版本唯一ID) [required]
+  string pipeline_gpath = 2;   // GPath (业务唯一路径) [required]
+  uint32 version = 3;          // 版本号 [required]
+  string name = 4;           // 管线名称 [required]
+  repeated Qualification unlock_quals = 7; // 解锁条件 [required]
+  repeated Qualification certs_quals = 8; // 证书要求 [required]
+  repeated StageConfig stages = 9; // 阶段配置 [required]
+  string status = 10;          // 状态 [required]
+  bool is_current = 11;        // 是否为当前版本 [required]
+  string created_at = 12;      // 创建时间 [required]
+  reserved 13, 14, 15, 16, 19;
+  string category_tips = 17;          // 分类提示 [required]
+  repeated Qualification certs = 18;          // 最终拿到的证书 [optional]
+  string respath = 20;                // 权限资源路径 [required]
+  string thumbnail_object_key = 21;  // 封面图 S3 object key
+  string thumbnail_file_hash = 22;   // 封面图 SHA256 file hash
+  string description = 23;           // 管线描述/简介 [optional]
+}
+
+message StageConfig {
+  string stage_id = 1;         // 管线阶段的 ULID [required]
+  string name = 2;           // 阶段名称 [required]
+  int32 sort_order = 3;        // 排序顺序 [required]
+  repeated UnitConfig units = 4; // 单元配置 [required]
+}
+
+message UnitConfig {
+  reserved 9, 14, 15, 16, 17, 18, 19;
+  string unit_id = 1;          // 阶段单元(计费) ULID [required]
+  string name = 25;            // 单元显示名称 [required]
+  repeated string exemption_quals = 5; // 资格 ULID 列表  [required]
+  // bool allow_retake = 9;      // 是否允许重考 [required] (removed)
+  bool allow_exemption = 21;  // 是否允许免考 [required]
+  string glms_course_id = 20; // GMLS Course ID [optional]
+  string program = 22;        // 考试program [optional]
+  string exam_id = 23;        // 考试id [optional]
+  string form_code = 24;      // 考试form code [optional]
+}
+
+message Qualification {
+  reserved 4, 5;
+  string qual_id = 1;           // 资格 ULID 对应gcred中的cred def id [required]
+  string name_hint = 2;           // 资格名称 [required]
+  string pdf_template_id = 3;   // 证书PDF模板 ULID [required]
+}
+
+// --- 请求/响应消息 ---
+
+message CreatePipelineDraftRequest {
+  string category_tips = 1;      // 分类提示，客户端按相同值分组展示，最长64字符
+  string name = 2;               // 管线名称 [required] 
+  reserved 3;                    // from_pipeline_guid (deprecated)
+  string pipeline_id = 4;        // 外部指定的 pipeline_id ULID (版本唯一ID) [required]
+  string pipeline_gpath = 5;     // 外部指定的 pipeline_gpath (业务唯一路径) [required for fresh creation]
+  string respath = 6;            // 权限资源路径 [required]
+  string thumbnail_object_key = 7; // 封面图 S3 object key [optional]
+  string thumbnail_file_hash = 8;  // 封面图 SHA256 file hash [optional]
+  string description = 9;          // 管线描述/简介 [optional]
+}
+
+message DuplicatePipelineDraftRequest {
+  string from_pipeline_id = 1; // 数据源 pipeline_id (特定版本唯一ID) [required]
+  string pipeline_id = 2;      // 新的 pipeline_id ULID (新草稿版本ID) [required]
+  string name = 3;             // 新的管线名称 [required]
+}
+
+message UpdatePipelineStructureRequest {
+  string pipeline_id = 1; // 必须是 Draft 状态的 管线 ID [required]
+  repeated StageConfig stages = 2;   // 包含修改后的完整 Stage/Unit 树，GCC 将全量覆盖 Draft 的内部结构 [required]
+  repeated Qualification unlock_quals = 5; // 解锁条件 [required]
+  repeated Qualification certs_quals = 6; // 证书要求 [required]
+  reserved 7, 8, 9, 10, 12;
+  repeated Qualification certs = 11; // 最终拿到的证书 [required]
+}
+
+message PublishPipelineRequest {
+  string pipeline_id = 1; // 待发布的 Draft 管线 ID [required]
+}
+
+message DeprecatePipelineRequest {
+  string pipeline_id = 1; // 待废弃的 Active 管线 ID [required]
+}
+
+message DeletePipelineRequest {
+  string pipeline_id = 1; // 待删除的 Draft 管线 ID [required]
+}
+
+message UpdateMetadataRequest {
+  string target_id = 1; // pipeline_id [required]
+  optional string new_name = 2;  // 新的管线名称 [optional]
+  reserved 3, 4, 5, 6;
+  optional string thumbnail_object_key = 7;   // 封面图 S3 object key [optional]
+  optional string thumbnail_file_hash = 8;    // 封面图 SHA256 file hash [optional]
+  optional string description = 9;            // 管线描述/简介 [optional]
+}
+
+message GetPipelineRequest {
+  // 二选一：要么通过具体的版本 ID 取，要么通过 GUID 取当前生效版 [required]
+  oneof query {
+    string pipeline_id = 1;
+    string pipeline_gpath = 2; 
+  }
+}
+
+message GetPipelineFinalEligibilityRequest {
+  string pipeline_id = 1; // pipeline 配置版本 ID [required]
+}
+
+message GetPipelineFinalEligibilityResponse {
+  string pipeline_id = 1; // pipeline 配置版本 ID [required]
+  repeated Qualification certs_quals = 2; // 证书前提要求 [required]
+  repeated Qualification certs = 3; // 最终证书 [required]
+}
+
+message ListPipelinesRequest {
+  string category_tips = 1; // 分类提示过滤（可选），相同category_tips的管线可归入同一表格
+  int32 limit = 2;
+  int32 offset = 3;
+  string candidate_ulid = 4; // 候选人 (考生) ULID [required]
+}
+
+
+message ListPipelinesAdminRequest {
+  string category_tips = 1; // 分类提示过滤（可选），相同category_tips的管线可归入同一表格
+  bool only_current = 2; // 是否只显示当前生效的版本 [required] 
+  int32 limit = 3;
+  int32 offset = 4;
+  optional string status = 5; // 按状态过滤 [optional]
+}
+
+message ListPipelinesResponse {
+  repeated PipelineSummary pipelines = 1;
+}
+
+message PipelineSummary {
+  string pipeline_id = 1;
+  string pipeline_gpath = 2;
+  uint32 version = 3;
+  string name = 4;
+  string category_tips = 5;
+  string status = 6;
+  bool is_current = 7;
+  string created_at = 8;
+  string updated_at = 9;
+  string thumbnail_object_key = 10;
+  string thumbnail_file_hash = 11;
+  string description = 12;
+}
+
+message StageSummary {
+  string stage_id = 1;
+  string pipeline_id = 2;
+  string name = 3;
+  int32 sort_order = 4;
+  int32 unit_count = 5;
+  string created_at = 6;
+  string updated_at = 7;
+}
+
+message UnitSummary {
+  reserved 4;
+  string unit_id = 1;
+  string stage_id = 2;
+  string glms_course_id = 3;
+  // bool allow_retake = 4; (removed)
+  bool allow_exemption = 5;
+  string created_at = 6;
+  string updated_at = 7;
+  string program = 8;
+  string exam_id = 9;
+  string form_code = 10;
+}
+
+message GetPipelineDetailRequest {
+  oneof query {
+    string pipeline_id = 1;
+    string pipeline_gpath = 2;
+  }
+}
+
+message GetUnitDetailRequest {
+  string unit_id = 1;
+}
+
+message ListStagesRequest {
+  string pipeline_id = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+}
+
+message ListStagesResponse {
+  repeated StageSummary stages = 1;
+}
+
+message GetStageDetailRequest {
+  string stage_id = 1;
+}
+
+message ListUnitsRequest {
+  oneof filter {
+    string stage_id = 1;
+    string pipeline_id = 2;
+  }
+  int32 limit = 3;
+  int32 offset = 4;
+}
+
+message ListUnitsResponse {
+  repeated UnitSummary units = 1;
+}
+
+// --- S3 预签名 URL 消息 ---
+
+message CreateUploadURLRequest {
+  string file_name = 1;        // 文件名 [required]
+  string content_type = 2;     // 文件MIME类型 [required]
+  string pipeline_id = 3;      // 认证管线ID [required]
+  string file_hash = 4;        // 文件SHA256哈希 [required]
+}
+
+message CreateUploadURLResponse {
+  string bucket_name = 1;      // 存储桶名称
+  string object_key = 2;       // 对象key
+  string upload_url = 3;       // 预签名上传URL（15分钟有效）
+  string expires_at = 4;       // 过期时间 (UTC, RFC3339)
+  map<string, string> signed_headers = 5; // 上传需要附带的 HTTP Header
+}
+
+message GetPublicURLRequest {
+  string pipeline_id = 1;      // 认证管线ID [required]
+}
+
+message GetPublicURLResponse {
+  string public_url = 1;       // 认证管线封面公开URL
+}
+
+

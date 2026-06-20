@@ -1,0 +1,1003 @@
+syntax = "proto3";
+
+package gmall;
+
+option go_package = "cftp/gmall";
+
+service MallService {
+  // === Bundle 管理 ===
+  rpc CreateBundle(CreateBundleRequest) returns (CreateBundleResponse);
+  rpc UpdateBundleMeta(UpdateBundleMetaRequest) returns (UpdateBundleResponse);
+  rpc UpdateBundlePricing(UpdateBundlePricingRequest) returns (UpdateBundleResponse);
+  rpc GetBundle(GetBundleRequest) returns (GetBundleResponse);
+  rpc ListBundles(ListBundlesRequest) returns (ListBundlesResponse);
+
+  // === Bundle 购买（唯一顶层入口） ===
+  rpc CreateBundleOrder(CreateBundleOrderRequest) returns (CreateBundleOrderResponse);
+  rpc GetBundleOrderSummary(GetBundleOrderSummaryRequest) returns (GetBundleOrderSummaryResponse);
+  rpc GetBundleOrderDetail(GetBundleOrderDetailRequest) returns (GetBundleOrderDetailResponse);
+  rpc ListBundleOrders(ListBundleOrdersRequest) returns (ListBundleOrdersResponse);
+
+  // Sync and re-evaluate pipeline order exemptions.
+  rpc SyncPipelineOrderExemptions(SyncPipelineOrderExemptionsRequest) returns (SyncPipelineOrderExemptionsResponse);
+
+  // Candidate creates a stage order in gmall.
+  rpc CreateStageOrder(CreateStageOrderRequest) returns (CreateStageOrderResponse);
+
+  // Candidate selects stage exemptions in gmall.
+  rpc SelectStageExemptions(SelectStageExemptionsRequest) returns (SelectStageExemptionsResponse);
+
+  // Candidate creates a course retake order in gmall.
+  rpc CreateCourseRetakeOrder(CreateCourseRetakeOrderRequest) returns (CreateCourseRetakeOrderResponse);
+
+  // Query a pipeline order by its logical order ULID.
+  rpc GetPipelineOrderStatus(GetPipelineOrderStatusRequest) returns (GetPipelineOrderStatusResponse);
+
+  // Query a stage order by its logical order ULID.
+  rpc GetStageOrderStatus(GetStageOrderStatusRequest) returns (GetStageOrderStatusResponse);
+
+  // Query a course retake order by its logical order ULID.
+  rpc GetCourseRetakeOrderStatus(GetCourseRetakeOrderStatusRequest) returns (GetCourseRetakeOrderStatusResponse);
+
+  // Query whether a stage candidate action is already completed.
+  rpc GetStageCandidateActionStatus(GetStageCandidateActionStatusRequest) returns (GetStageCandidateActionStatusResponse);
+
+  // Query whether a course-unit retake payment is already completed.
+  rpc GetCourseUnitRetakePaymentStatus(GetCourseUnitRetakePaymentStatusRequest) returns (GetCourseUnitRetakePaymentStatusResponse);
+
+  // Admin ignores a failed mail task.
+  rpc IgnoreMailTask(IgnoreMailTaskRequest) returns (IgnoreMailTaskResponse);
+
+  // Admin resends a failed mail task.
+  rpc ResendMailTask(ResendMailTaskRequest) returns (ResendMailTaskResponse);
+
+  // Candidate decides to pay for a business order.
+  rpc InitiatePayment(InitiatePaymentRequest) returns (InitiatePaymentResponse);
+
+  // Preview payment details with coupon code calculation.
+  rpc PreviewPayment(PreviewPaymentRequest) returns (PreviewPaymentResponse);
+
+
+  // --- New Query RPCs ---
+  rpc GetOrderSummary(GetOrderSummaryRequest) returns (GetOrderSummaryResponse);
+  rpc GetOrderDetail(GetOrderDetailRequest) returns (GetOrderDetailResponse);
+  rpc ListOrders(ListOrdersRequest) returns (ListOrdersResponse);
+
+  rpc GetPipelineOrderSummary(GetPipelineOrderSummaryRequest) returns (GetPipelineOrderSummaryResponse);
+  rpc GetPipelineOrderDetail(GetPipelineOrderDetailRequest) returns (GetPipelineOrderDetailResponse);
+  rpc ListPipelineOrders(ListPipelineOrdersRequest) returns (ListPipelineOrdersResponse);
+
+  rpc GetStageOrderSummary(GetStageOrderSummaryRequest) returns (GetStageOrderSummaryResponse);
+  rpc GetStageOrderDetail(GetStageOrderDetailRequest) returns (GetStageOrderDetailResponse);
+  rpc ListStageOrders(ListStageOrdersRequest) returns (ListStageOrdersResponse);
+
+  rpc GetCourseRetakeOrderSummary(GetCourseRetakeOrderSummaryRequest) returns (GetCourseRetakeOrderSummaryResponse);
+  rpc GetCourseRetakeOrderDetail(GetCourseRetakeOrderDetailRequest) returns (GetCourseRetakeOrderDetailResponse);
+  rpc ListCourseRetakeOrders(ListCourseRetakeOrdersRequest) returns (ListCourseRetakeOrdersResponse);
+
+  rpc GetMailTaskSummary(GetMailTaskSummaryRequest) returns (GetMailTaskSummaryResponse);
+  rpc GetMailTaskDetail(GetMailTaskDetailRequest) returns (GetMailTaskDetailResponse);
+  rpc ListMailTasks(ListMailTasksRequest) returns (ListMailTasksResponse);
+
+  rpc GetNatsMessageSummary(GetNatsMessageSummaryRequest) returns (GetNatsMessageSummaryResponse);
+  rpc GetNatsMessageDetail(GetNatsMessageDetailRequest) returns (GetNatsMessageDetailResponse);
+  rpc ListNatsMessages(ListNatsMessagesRequest) returns (ListNatsMessagesResponse);
+
+  // Candidate creates a pipeline unlock order.
+  rpc CreatePipelineUnlockOrder(CreatePipelineUnlockOrderRequest) returns (CreatePipelineUnlockOrderResponse);
+
+  rpc GetPipelineUnlockOrderSummary(GetPipelineUnlockOrderSummaryRequest) returns (GetPipelineUnlockOrderSummaryResponse);
+  rpc GetPipelineUnlockOrderDetail(GetPipelineUnlockOrderDetailRequest) returns (GetPipelineUnlockOrderDetailResponse);
+  rpc ListPipelineUnlockOrders(ListPipelineUnlockOrdersRequest) returns (ListPipelineUnlockOrdersResponse);
+
+  // Candidate creates a credential application order.
+  rpc CreateCredentialApplicationOrder(CreateCredentialApplicationOrderRequest) returns (CreateCredentialApplicationOrderResponse);
+
+  rpc GetCredentialApplicationOrderSummary(GetCredentialApplicationOrderSummaryRequest) returns (GetCredentialApplicationOrderSummaryResponse);
+  rpc GetCredentialApplicationOrderDetail(GetCredentialApplicationOrderDetailRequest) returns (GetCredentialApplicationOrderDetailResponse);
+  rpc ListCredentialApplicationOrders(ListCredentialApplicationOrdersRequest) returns (ListCredentialApplicationOrdersResponse);
+
+  // Candidate checks whether they are eligible to purchase a pipeline.
+  // Returns ALL blockers at once, not just the first one encountered.
+  rpc CheckPipelineEligibility(CheckPipelineEligibilityRequest) returns (CheckPipelineEligibilityResponse);
+
+  rpc AdminPurgeCandidateBundle(AdminPurgeCandidateBundleRequest) returns (AdminPurgeCandidateBundleResponse);
+
+  rpc CreateBundleUploadURL(CreateBundleUploadURLRequest) returns (CreateBundleUploadURLResponse);
+  rpc GetBundleThumbnailURL(GetBundleThumbnailURLRequest) returns (GetBundleThumbnailURLResponse);
+}
+
+message CreatePipelineOrderRequest {
+  string candidate_ulid = 1; // candidate ULID [required]
+  string pipeline_cc_ulid = 2; // pipeline type ULID in gcc [required]
+  string payment_mode = 3; // FULL_PIPELINE or BY_STAGE [required]
+  string candidate_selected_exemptions_json = 4; // candidate selected exemptions JSON [required]
+}
+
+message CreatePipelineOrderResponse {
+  string pipeline_order_ulid = 1; // pipeline order ULID [required]
+  string order_status = 2; // current pipeline order status [required]
+  string pipeline_pay_order_ulid = 4; // pipeline payment order ULID [optional]
+  string payment_key = 5; // Stripe client secret or hosted checkout URL [optional]
+  bool reused_existing = 6; // whether an in-progress order was reused [required]
+  string message = 7; // human-readable message [required]
+}
+
+message SyncPipelineOrderExemptionsRequest {
+  string pipeline_order_ulid = 1; // pipeline order ULID [required]
+}
+
+message SyncPipelineOrderExemptionsResponse {
+  string pipeline_order_ulid = 1; // pipeline order ULID [required]
+  string final_exemptions_json = 2; // evaluated final exemptions JSON [required]
+  string order_status = 3; // current pipeline order status [required]
+  string message = 4; // human-readable message [required]
+}
+
+message CreateStageOrderRequest {
+  string candidate_ulid = 1; // candidate ULID [required]
+  string pipeline_cc_ulid = 2; // pipeline type ULID in gcc [required]
+  string pipeline_order_ulid = 3; // related pipeline order ULID [optional]
+  string stage_ulid = 4; // stage instance ULID if already exists [optional]
+  string stage_cc_ulid = 5; // stage type ULID in gcc [required]
+}
+
+message CreateStageOrderResponse {
+  string stage_order_ulid = 1; // stage order ULID [required]
+  string order_status = 2; // current stage order status [required]
+  string stage_pay_order_ulid = 4; // stage payment order ULID [optional]
+  string payment_key = 5; // Stripe client secret or hosted checkout URL [optional]
+  bool reused_existing = 6; // whether an in-progress order was reused [required]
+  string message = 7; // human-readable message [required]
+}
+
+message SelectStageExemptionsRequest {
+  string stage_order_ulid = 1; // stage order ULID [required]
+  string exemptions_json = 2; // candidate selected exemptions JSON [required]
+}
+
+message SelectStageExemptionsResponse {
+  string stage_order_ulid = 1; // stage order ULID [required]
+  string order_status = 2; // current stage order status [required]
+  string stage_pay_order_ulid = 3; // stage payment order ULID [optional]
+  string message = 4; // human-readable message [required]
+}
+
+message CreateCourseRetakeOrderRequest {
+  string course_unit_ulid = 1; // course unit instance ULID [required]
+  string course_unit_cc_ulid = 2; // course unit type ULID in gcc [required]
+  string candidate_ulid = 3; // candidate ULID [required]
+  uint32 retried_count = 4; // [optional] retried count from gprog; 0 or unset means auto
+  string bundle_order_ulid = 5; // bundle order ULID [required]
+}
+
+message CreateCourseRetakeOrderResponse {
+  string course_retake_order_ulid = 1; // course retake order ULID [required]
+  string order_status = 2; // current course retake order status [required]
+  string pay_order_ulid = 3; // payment order ULID [required]
+  string payment_key = 4; // Stripe client secret or hosted checkout URL [optional]
+  bool reused_existing = 5; // whether an in-progress order was reused [required]
+  string message = 6; // human-readable message [required]
+}
+
+message GetPipelineOrderStatusRequest {
+  string pipeline_order_ulid = 1; // pipeline order ULID [required]
+}
+
+message GetPipelineOrderStatusResponse {
+  bool found = 1; // whether the order exists
+  string order_status = 2; // current pipeline order status
+  string pipeline_pay_order_ulid = 4; // pipeline payment order ULID
+  string payment_key = 5; // Stripe client secret or hosted checkout URL
+  string message = 6; // human-readable message
+}
+
+message GetStageOrderStatusRequest {
+  string stage_order_ulid = 1; // stage order ULID [required]
+}
+
+message GetStageOrderStatusResponse {
+  bool found = 1; // whether the order exists
+  string order_status = 2; // current stage order status
+  string stage_pay_order_ulid = 4; // stage payment order ULID
+  string payment_key = 5; // Stripe client secret or hosted checkout URL
+  string message = 6; // human-readable message
+}
+
+message GetCourseRetakeOrderStatusRequest {
+  string course_retake_order_ulid = 1; // course retake order ULID [required]
+}
+
+message GetCourseRetakeOrderStatusResponse {
+  bool found = 1; // whether the order exists
+  string order_status = 2; // current course retake order status
+  string pay_order_ulid = 3; // payment order ULID
+  string payment_key = 4; // Stripe client secret or hosted checkout URL
+  string message = 5; // human-readable message
+}
+
+message GetStageCandidateActionStatusRequest {
+  string pipeline_ulid = 1; // pipeline instance ULID [required]
+  string candidate_ulid = 2; // candidate ULID [required]
+  string stage_ulid = 3; // stage instance ULID [required]
+  string stage_cc_ulid = 4; // stage config type ULID [optional]
+}
+
+message GetStageCandidateActionStatusResponse {
+  bool found = 1; // whether the corresponding record exists
+  bool completed = 2; // whether the stage payment / exemption flow is completed
+  bool is_paid = 3; // whether the stage payment is paid or no payment is required
+  repeated string exempted_course_unit_cc_ulids = 4; // final exempted course unit cc ulids
+  string message = 5; // human-readable message
+}
+
+message GetCourseUnitRetakePaymentStatusRequest {
+  string bundle_order_ulid = 1; // bundle order ULID [required]
+  string course_unit_cc_ulid = 2; // course unit type ULID in gcc [required]
+  uint32 retried_count = 3; // retried count [required]
+}
+
+message GetCourseUnitRetakePaymentStatusResponse {
+  bool found = 1; // whether the corresponding record exists
+  bool paid = 2; // whether the retake payment is completed
+  string message = 3; // human-readable message
+}
+
+message IgnoreMailTaskRequest {
+  string mail_task_ulid = 1; // mail task ULID [required]
+  string admin_id = 2; // operator admin ID [required]
+}
+
+message IgnoreMailTaskResponse {
+  string mail_task_ulid = 1; // mail task ULID [required]
+  string task_status = 2; // updated status, for example IGNORED [required]
+  string message = 3; // human-readable message [required]
+}
+
+message ResendMailTaskRequest {
+  string mail_task_ulid = 1; // mail task ULID [required]
+  string admin_id = 2; // operator admin ID [required]
+  bool use_new_email = 3; // whether to use the candidate latest email [required]
+  optional string override_recipient_email = 4; // [optional] custom recipient email
+  optional string override_template_params_json = 5; // [optional] custom template parameters JSON
+}
+
+message ResendMailTaskResponse {
+  string mail_task_ulid = 1; // original mail task ULID [required]
+  string task_status = 2; // updated status, for example RESEND [required]
+  string message = 3; // human-readable message [required]
+}
+
+// =============================================================================
+// Query API Messages
+// =============================================================================
+
+// Order messages
+message GetOrderSummaryRequest {
+  string order_ulid = 1;
+}
+
+message GetOrderSummaryResponse {
+  bool found = 1;
+  OrderSummary summary = 2;
+}
+
+message GetOrderDetailRequest {
+  string order_ulid = 1;
+}
+
+message GetOrderDetailResponse {
+  bool found = 1;
+  OrderDetail detail = 2;
+}
+
+message ListOrdersRequest {
+  string candidate_ulid = 1;
+  string biz_type = 2;
+  string order_status = 3;
+  string payment_status = 4;
+  int32 limit = 5;
+  int32 offset = 6;
+  string biz_ref_ulid = 7;
+}
+
+message ListOrdersResponse {
+  repeated OrderSummary items = 1;
+  int32 total = 2;
+}
+
+message OrderSummary {
+  string order_ulid = 1;
+  string candidate_ulid = 2;
+  string biz_type = 3;
+  string biz_ref_ulid = 4;
+  string currency_code = 5;
+  int64 amount_minor = 6;
+  string order_status = 7;
+  string payment_status = 8;
+  string created_at = 9;
+}
+
+message OrderDetail {
+  OrderSummary summary = 1;
+  string gpay_order_ulid = 2;
+  string payment_key = 3;
+  string paid_at = 4;
+  string closed_at = 5;
+  string last_reconciled_at = 6;
+  uint32 version = 7;
+  string updated_at = 8;
+  string order_status_at = 9;
+  string payment_status_at = 10;
+}
+
+// PipelineOrder messages
+message GetPipelineOrderSummaryRequest {
+  string pipeline_order_ulid = 1;
+}
+
+message GetPipelineOrderSummaryResponse {
+  bool found = 1;
+  PipelineOrderSummary summary = 2;
+}
+
+message GetPipelineOrderDetailRequest {
+  string pipeline_order_ulid = 1;
+}
+
+message GetPipelineOrderDetailResponse {
+  bool found = 1;
+  PipelineOrderDetail detail = 2;
+}
+
+message ListPipelineOrdersRequest {
+  string candidate_ulid = 1;
+  string pipeline_cc_ulid = 2;
+  string order_status = 3;
+  int32 limit = 4;
+  int32 offset = 5;
+  string payment_mode = 6;
+}
+
+message ListPipelineOrdersResponse {
+  repeated PipelineOrderSummary items = 1;
+  int32 total = 2;
+}
+
+message PipelineOrderSummary {
+  string pipeline_order_ulid = 1;
+  string candidate_ulid = 2;
+  string pipeline_cc_ulid = 3;
+  string payment_mode = 4;
+  string order_status = 5;
+  string created_at = 6;
+  string pipeline_pay_order_ulid = 7;
+}
+
+message PipelineOrderDetail {
+  PipelineOrderSummary summary = 1;
+  string status_at = 2;
+  string pipeline_pay_order_ulid = 5;
+  string candidate_selected_exemptions_json = 6;
+  string final_exemptions_json = 7;
+  string instantiated_pipeline_ulid = 14;
+  string completed_at = 15;
+  string completed_reason = 16;
+  string last_reconciled_at = 17;
+  uint32 version = 18;
+  string updated_at = 19;
+}
+
+// StageOrder messages
+message GetStageOrderSummaryRequest {
+  string stage_order_ulid = 1;
+}
+
+message GetStageOrderSummaryResponse {
+  bool found = 1;
+  StageOrderSummary summary = 2;
+}
+
+message GetStageOrderDetailRequest {
+  string stage_order_ulid = 1;
+}
+
+message GetStageOrderDetailResponse {
+  bool found = 1;
+  StageOrderDetail detail = 2;
+}
+
+message ListStageOrdersRequest {
+  string candidate_ulid = 1;
+  string pipeline_cc_ulid = 2;
+  string stage_cc_ulid = 3;
+  string order_status = 4;
+  int32 limit = 5;
+  int32 offset = 6;
+  string pipeline_order_ulid = 7;
+}
+
+message ListStageOrdersResponse {
+  repeated StageOrderSummary items = 1;
+  int32 total = 2;
+}
+
+message StageOrderSummary {
+  string stage_order_ulid = 1;
+  string candidate_ulid = 2;
+  string pipeline_cc_ulid = 3;
+  string stage_cc_ulid = 4;
+  string order_status = 5;
+  string created_at = 6;
+  string stage_pay_order_ulid = 7;
+}
+
+message StageOrderDetail {
+  StageOrderSummary summary = 1;
+  string pipeline_order_ulid = 2;
+  string stage_ulid = 3;
+  string status_at = 4;
+  string stage_pay_order_ulid = 7;
+  string candidate_selected_exemptions_json = 8;
+  string final_exemptions_json = 9;
+  string completed_at = 16;
+  string completed_reason = 17;
+  string last_reconciled_at = 18;
+  uint32 version = 19;
+  string updated_at = 20;
+}
+
+// CourseRetakeOrder messages
+message GetCourseRetakeOrderSummaryRequest {
+  string course_retake_order_ulid = 1;
+}
+
+message GetCourseRetakeOrderSummaryResponse {
+  bool found = 1;
+  CourseRetakeOrderSummary summary = 2;
+}
+
+message GetCourseRetakeOrderDetailRequest {
+  string course_retake_order_ulid = 1;
+}
+
+message GetCourseRetakeOrderDetailResponse {
+  bool found = 1;
+  CourseRetakeOrderDetail detail = 2;
+}
+
+message ListCourseRetakeOrdersRequest {
+  string candidate_ulid = 1;
+  string course_unit_ulid = 2;
+  string course_unit_cc_ulid = 3;
+  string order_status = 4;
+  int32 limit = 5;
+  int32 offset = 6;
+  string bundle_order_ulid = 7;
+}
+
+message ListCourseRetakeOrdersResponse {
+  repeated CourseRetakeOrderSummary items = 1;
+  int32 total = 2;
+}
+
+message CourseRetakeOrderSummary {
+  string course_retake_order_ulid = 1;
+  string course_unit_ulid = 2;
+  string course_unit_cc_ulid = 3;
+  string candidate_ulid = 4;
+  uint32 retried_count = 5;
+  string order_status = 6;
+  string created_at = 7;
+  string pay_order_ulid = 8;
+}
+
+message CourseRetakeOrderDetail {
+  CourseRetakeOrderSummary summary = 1;
+  string status_at = 2;
+  string pay_order_ulid = 3;
+  string completed_at = 4;
+  string completed_reason = 5;
+  string last_reconciled_at = 6;
+  uint32 version = 7;
+  string updated_at = 8;
+}
+
+// MailTask messages
+message GetMailTaskSummaryRequest {
+  string mail_task_ulid = 1;
+}
+
+message GetMailTaskSummaryResponse {
+  bool found = 1;
+  MailTaskSummary summary = 2;
+}
+
+message GetMailTaskDetailRequest {
+  string mail_task_ulid = 1;
+}
+
+message GetMailTaskDetailResponse {
+  bool found = 1;
+  MailTaskDetail detail = 2;
+}
+
+message ListMailTasksRequest {
+  string candidate_id = 1;
+  string order_ulid = 2;
+  string task_status = 3;
+  int32 limit = 4;
+  int32 offset = 5;
+  string mail_type = 6;
+}
+
+message ListMailTasksResponse {
+  repeated MailTaskSummary items = 1;
+  int32 total = 2;
+}
+
+message MailTaskSummary {
+  string mail_task_ulid = 1;
+  string candidate_id = 2;
+  string order_ulid = 3;
+  string mail_type = 4;
+  string recipient_email = 5;
+  string recipient_name = 6;
+  string subject = 7;
+  string task_status = 8;
+  string created_at = 9;
+  uint32 retry_count = 10;
+}
+
+message MailTaskDetail {
+  MailTaskSummary summary = 1;
+  string template_path = 2;
+  string template_params_json = 3;
+  string manual_by = 4;
+  string last_error_code = 5;
+  string last_error_msg = 6;
+  string final_at = 7;
+  string last_reconciled_at = 8;
+  uint32 version = 9;
+  string updated_at = 10;
+}
+
+// NatsMessage messages
+message GetNatsMessageSummaryRequest {
+  string message_ulid = 1;
+}
+
+message GetNatsMessageSummaryResponse {
+  bool found = 1;
+  NatsMessageSummary summary = 2;
+}
+
+message GetNatsMessageDetailRequest {
+  string message_ulid = 1;
+}
+
+message GetNatsMessageDetailResponse {
+  bool found = 1;
+  NatsMessageDetail detail = 2;
+}
+
+message ListNatsMessagesRequest {
+  string receive_status = 1;
+  string source_service = 2;
+  int32 limit = 3;
+  int32 offset = 4;
+  string subject = 5;
+  string message_type = 6;
+}
+
+message ListNatsMessagesResponse {
+  repeated NatsMessageSummary items = 1;
+  int32 total = 2;
+}
+
+message NatsMessageSummary {
+  string message_ulid = 1;
+  string subject = 2;
+  string source_service = 3;
+  string message_type = 4;
+  string receive_status = 5;
+  uint32 process_attempts = 6;
+  string received_at = 7;
+  string last_processing_at = 8;
+}
+
+message NatsMessageDetail {
+  NatsMessageSummary summary = 1;
+  string message_payload = 2;
+  string last_error_code = 3;
+  string last_error_message = 4;
+  string created_at = 5;
+  string updated_at = 6;
+  string last_processing_at = 7;
+}
+
+message InitiatePaymentRequest {
+  string biz_type = 1;      // PIPELINE_PAYMENT, STAGE_PAYMENT, COURSE_RETAKE_PAYMENT, PIPELINE_UNLOCK, CREDENTIAL_APPLICATION, BUNDLE_PURCHASE
+  string biz_ref_ulid = 2;  // pipeline/stage/course retake order ULID
+  string success_url = 3;
+  string cancel_url = 4;
+  repeated string coupon_codes = 5; // Stripe coupon codes to apply [optional]
+}
+
+message InitiatePaymentResponse {
+  string payment_key = 1;
+  string pay_order_ulid = 2;
+  string message = 3;
+}
+
+message PreviewPaymentRequest {
+  string biz_type = 1;      // PIPELINE_PAYMENT, STAGE_PAYMENT, COURSE_RETAKE_PAYMENT, PIPELINE_UNLOCK, CREDENTIAL_APPLICATION, BUNDLE_PURCHASE
+  string biz_ref_ulid = 2;  // pipeline/stage/course retake order ULID
+  repeated string coupon_codes = 3; // Coupon codes to preview
+}
+
+message PreviewPaymentResponse {
+  int64 subtotal = 1;         // Original total in cents
+  int64 discount_total = 2;   // Total discount in cents
+  int64 tax_total = 3;        // Total tax in cents
+  int64 total = 4;            // Final total in cents
+  string currency = 5;        // Currency code
+  repeated CouponDiscount breakdown = 6; // Details of applied coupons
+  repeated InvalidCoupon invalid = 7;     // Details of invalid coupons
+}
+
+message CouponDiscount {
+  string code = 1;
+  string name = 2;
+  string type = 3;            // "percentage" / "fixed_amount"
+  double percent_off = 4;
+  int64 amount_off = 5;
+  int64 discount = 6;
+  string description = 7;
+}
+
+message InvalidCoupon {
+  string code = 1;
+  string reason = 2;
+}
+
+
+// PipelineUnlockOrder messages
+message CreatePipelineUnlockOrderRequest {
+  string candidate_ulid = 1;   // candidate ULID [required]
+  string pipeline_cc_ulid = 2; // pipeline type ULID in gcc [required]
+  string bundle_id = 3;        // bundle version ULID [required]
+}
+
+message CreatePipelineUnlockOrderResponse {
+  string pipeline_unlock_order_ulid = 1; // pipeline unlock order ULID [required]
+  string order_status = 2;              // current unlock order status [required]
+  string pay_order_ulid = 3;            // payment order ULID [optional]
+  string payment_key = 4;               // Stripe client secret or hosted checkout URL [optional]
+  bool reused_existing = 5;             // whether an existing in-progress order was reused
+  string message = 6;                   // human-readable message
+}
+
+message GetPipelineUnlockOrderSummaryRequest {
+  string pipeline_unlock_order_ulid = 1;
+}
+
+message GetPipelineUnlockOrderSummaryResponse {
+  bool found = 1;
+  PipelineUnlockOrderSummary summary = 2;
+}
+
+message GetPipelineUnlockOrderDetailRequest {
+  string pipeline_unlock_order_ulid = 1;
+}
+
+message GetPipelineUnlockOrderDetailResponse {
+  bool found = 1;
+  PipelineUnlockOrderDetail detail = 2;
+}
+
+message ListPipelineUnlockOrdersRequest {
+  string candidate_ulid = 1;
+  string pipeline_cc_ulid = 2;
+  string order_status = 3;
+  int32 limit = 4;
+  int32 offset = 5;
+}
+
+message ListPipelineUnlockOrdersResponse {
+  repeated PipelineUnlockOrderSummary items = 1;
+  int32 total = 2;
+}
+
+message PipelineUnlockOrderSummary {
+  string pipeline_unlock_order_ulid = 1;
+  string candidate_ulid = 2;
+  string pipeline_cc_ulid = 3;
+  string order_status = 4;
+  string created_at = 5;
+  string pay_order_ulid = 6;
+}
+
+message PipelineUnlockOrderDetail {
+  PipelineUnlockOrderSummary summary = 1;
+  string status_at = 2;
+  string pay_order_ulid = 3;
+  string completed_at = 4;
+  string completed_reason = 5;
+  string last_reconciled_at = 6;
+  uint32 version = 7;
+  string updated_at = 8;
+}
+
+message CreateCredentialApplicationOrderRequest {
+  string candidate_ulid = 1;
+  repeated string qual_ids = 2;
+  string pipeline_cc_ulid = 3;
+}
+
+message CreateCredentialApplicationOrderResponse {
+  string application_order_ulid = 1;
+  string order_status = 2;
+  string pay_order_ulid = 3;
+  string payment_key = 4;
+  bool reused_existing = 5;
+  string message = 6;
+}
+
+message GetCredentialApplicationOrderSummaryRequest {
+  string application_order_ulid = 1;
+}
+
+message GetCredentialApplicationOrderSummaryResponse {
+  bool found = 1;
+  CredentialApplicationOrderSummary summary = 2;
+}
+
+message GetCredentialApplicationOrderDetailRequest {
+  string application_order_ulid = 1;
+}
+
+message GetCredentialApplicationOrderDetailResponse {
+  bool found = 1;
+  CredentialApplicationOrderDetail detail = 2;
+}
+
+message ListCredentialApplicationOrdersRequest {
+  string candidate_ulid = 1;
+  string order_status = 2;
+  int32 limit = 3;
+  int32 offset = 4;
+}
+
+message ListCredentialApplicationOrdersResponse {
+  repeated CredentialApplicationOrderSummary items = 1;
+  int32 total = 2;
+}
+
+message CredentialApplicationOrderSummary {
+  string application_order_ulid = 1;
+  string candidate_ulid = 2;
+  string order_status = 3;
+  string created_at = 4;
+  string pay_order_ulid = 5;
+}
+
+message CredentialApplicationOrderDetail {
+  CredentialApplicationOrderSummary summary = 1;
+  string status_at = 2;
+  string pay_order_ulid = 3;
+  string application_items_json = 4;
+  string resolved_at = 5;
+  string last_reconciled_at = 6;
+  uint32 version = 7;
+  string updated_at = 8;
+}
+
+message CheckPipelineEligibilityRequest {
+  string candidate_ulid = 1;   // candidate ULID [required]
+  string pipeline_cc_ulid = 2; // pipeline type ULID in gcc [required]
+}
+
+message CheckPipelineEligibilityResponse {
+  // true = candidate can take a next action (unlock or purchase).
+  // Frontend uses can_unlock / can_purchase to decide which button to show.
+  bool eligible = 1;
+
+  bool can_unlock = 2;                      // candidate can create an unlock order
+  bool can_purchase = 3;                    // candidate can create a pipeline order
+  repeated EligibilityBlocker blockers = 4; // ALL reasons blocking unlock/purchase (empty when eligible=true)
+}
+
+message EligibilityBlocker {
+  // Machine-readable type for frontend handling.
+  // Values: MISSING_UNLOCK_QUALIFICATION, MISSING_CERTS_QUALIFICATION,
+  //         ALREADY_PURCHASED, IN_PROGRESS_PURCHASE, PIPELINE_NOT_FOUND
+  string blocker_type = 1;
+
+  // Human-readable description in English.
+  string description = 2;
+
+  // Specific missing items (e.g. qual names like ["CFtA Certification", "Work Experience Proof"]).
+  repeated string details = 3;
+}
+
+// === Bundle Message Definitions ===
+
+message CreateBundleRequest {
+  string name = 1;
+  string description = 2;
+  string items_json = 3;
+  string pricing_json = 4;
+  string thumbnail_object_key = 5;
+  string thumbnail_file_hash = 6;
+  string bundle_gpath = 7; // GPath (业务唯一路径) [required]
+}
+
+message CreateBundleResponse {
+  string bundle_id = 1;
+  string bundle_gpath = 2;
+  uint32 version = 3;
+}
+
+message UpdateBundleMetaRequest {
+  string bundle_id = 1;
+  optional string name = 2;
+  optional string description = 3;
+  optional string thumbnail_object_key = 4;
+  optional string thumbnail_file_hash = 5;
+  optional string status = 6;
+  optional bool is_current = 7;
+}
+
+message UpdateBundlePricingRequest {
+  string bundle_gpath = 1;
+  string pricing_json = 2;
+  string items_json = 3;
+}
+
+message UpdateBundleResponse {
+  string bundle_id = 1;
+  string bundle_gpath = 2;
+  uint32 version = 3;
+}
+
+message GetBundleRequest {
+  oneof query {
+    string bundle_id = 1;
+    string bundle_gpath = 2;
+  }
+}
+
+message GetBundleResponse {
+  BundleInfo bundle = 1;
+}
+
+message ListBundlesRequest {
+  int32 limit = 1;
+  int32 offset = 2;
+  string status = 3;
+}
+
+message ListBundlesResponse {
+  repeated BundleInfo bundles = 1;
+  int32 total = 2;
+}
+
+message BundleInfo {
+  string bundle_id = 1;
+  string bundle_gpath = 2;
+  uint32 version = 3;
+  string name = 4;
+  string description = 5;
+  string items_json = 6;
+  string pricing_json = 7;
+  string thumbnail_object_key = 8;
+  string thumbnail_file_hash = 9;
+  string status = 10;
+  bool is_current = 11;
+  string created_at = 12;
+  string updated_at = 13;
+}
+
+message CreateBundleOrderRequest {
+  string candidate_ulid = 1;
+  string bundle_id = 2;
+  string payment_mode = 3;
+  string selected_exemptions_json = 4;
+}
+
+message CreateBundleOrderResponse {
+  string bundle_order_ulid = 1;
+  string order_status = 2;
+  string bundle_pay_order_ulid = 3;
+  string payment_key = 4;
+  bool reused_existing = 5;
+  string message = 6;
+}
+
+message GetBundleOrderSummaryRequest {
+  string bundle_order_ulid = 1;
+}
+
+message GetBundleOrderSummaryResponse {
+  bool found = 1;
+  BundleOrderSummary summary = 2;
+}
+
+message GetBundleOrderDetailRequest {
+  string bundle_order_ulid = 1;
+}
+
+message GetBundleOrderDetailResponse {
+  bool found = 1;
+  BundleOrderDetail detail = 2;
+}
+
+message ListBundleOrdersRequest {
+  string candidate_ulid = 1;
+  string bundle_id = 2;
+  string order_status = 3;
+  int32 limit = 4;
+  int32 offset = 5;
+}
+
+message ListBundleOrdersResponse {
+  repeated BundleOrderSummary items = 1;
+  int32 total = 2;
+}
+
+message BundleOrderSummary {
+  string bundle_order_ulid = 1;
+  string candidate_ulid = 2;
+  string bundle_id = 3;
+  string payment_mode = 4;
+  string order_status = 5;
+  string created_at = 6;
+  string bundle_pay_order_ulid = 7;
+}
+
+message BundleOrderDetail {
+  BundleOrderSummary summary = 1;
+  string status_at = 2;
+  string items_snapshot_json = 3;
+  string pricing_snapshot_json = 4;
+  string completed_at = 5;
+  string completed_reason = 6;
+  string updated_at = 7;
+}
+
+message AdminPurgeCandidateBundleRequest {
+  string candidate_ulid = 1;      // candidate ULID [required]
+  string bundle_order_ulid = 2;   // bundle order ULID [required]
+  string admin_id = 3;            // admin user ID [required]
+}
+
+message AdminPurgeCandidateBundleResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message CreateBundleUploadURLRequest {
+  string file_name = 1;        // Filename (e.g. thumbnail.png) [required]
+  string content_type = 2;     // MIME type [required]
+  string bundle_id = 3;        // Bundle ULID [required]
+  string file_hash = 4;        // SHA256 checksum [required]
+}
+
+message CreateBundleUploadURLResponse {
+  string bucket_name = 1;      // S3 bucket name
+  string object_key = 2;       // Object key (e.g. bundles/<bundle_id>/thumbnail/thumbnail.png)
+  string upload_url = 3;       // Pre-signed S3 upload URL
+  string expires_at = 4;       // Expiry timestamp (RFC3339)
+  map<string, string> signed_headers = 5; // Extra headers to include during upload
+}
+
+message GetBundleThumbnailURLRequest {
+  string bundle_id = 1;        // Bundle ULID [required]
+}
+
+message GetBundleThumbnailURLResponse {
+  string public_url = 1;       // Publicly accessible URL for the bundle thumbnail
+}
+
+

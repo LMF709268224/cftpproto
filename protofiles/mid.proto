@@ -1,0 +1,76 @@
+syntax = "proto3";
+
+package gmid;
+
+option go_package = "cftp/gmid";
+
+service MidService {
+  // 根据 user_uuid 获取 user_ulid
+  rpc GetUlidByUUID(GetUlidByUUIDRequest) returns (GetUlidByUUIDResponse);
+  // 根据 user_ulid 获取 user_uuid
+  rpc GetUUIDByUlid(GetUUIDByUlidRequest) returns (GetUUIDByUlidResponse);
+  // 根据 uuid 或 ulid 获取完整标识信息
+  rpc GetFullIds(GetFullIdsRequest) returns (GetFullIdsResponse);
+  // 根据 user_ulid 获取或分配学号
+  rpc GetStudentNoByUlid(GetStudentNoByUlidRequest) returns (GetStudentNoByUlidResponse);
+  // 获取候选人（用户）基础信息
+  rpc FetchCandidateInfo(FetchCandidateInfoRequest) returns (FetchCandidateInfoResponse);
+  // 检查是否为测试账号 (包含角色 'tester-pipeline')
+  rpc CheckTesterStatus(CheckTesterStatusRequest) returns (CheckTesterStatusResponse);
+}
+
+message GetUlidByUUIDRequest {
+  string user_uuid = 1; // Casdoor 用户 UUID [required]
+}
+
+message GetUlidByUUIDResponse {
+  string user_ulid = 1; // 业务系统用户 ULID
+}
+
+message GetUUIDByUlidRequest {
+  string user_ulid = 1; // 业务系统用户 ULID [required]
+}
+
+message GetUUIDByUlidResponse {
+  string user_uuid = 1; // Casdoor 用户 UUID
+}
+
+message GetFullIdsRequest {
+  string user_uuid = 1;
+  string user_ulid = 2;
+  string user_id = 3;
+}
+
+message GetFullIdsResponse {
+  string user_ulid = 1;
+  string user_uuid = 2;
+  string user_id = 3; // Casdoor 用户 ID (owner/name)
+}
+
+message GetStudentNoByUlidRequest {
+  string user_ulid = 1; // 业务系统用户 ULID [required]
+}
+
+message GetStudentNoByUlidResponse {
+  string student_no = 1; // 学号
+}
+
+message FetchCandidateInfoRequest {
+  string candidate_ulid = 1;
+}
+
+message FetchCandidateInfoResponse {
+  string email = 1;
+  string display_name = 2;
+  string name = 3;
+}
+
+message CheckTesterStatusRequest {
+  string candidate_ulid = 1; // 候选人 ULID [required]
+}
+
+message CheckTesterStatusResponse {
+  bool is_tester = 1; // 是否为测试账号
+}
+
+

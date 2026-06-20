@@ -1,0 +1,262 @@
+syntax = "proto3";
+
+package gmsg;
+
+option go_package = "cftp/gmsg";
+
+// 消息与模板管理服务
+service MessageService {
+  // --- 用户端接口 ---
+  rpc ListMessages (ListMessagesRequest) returns (ListMessagesResponse);
+  rpc MarkAsRead (MarkAsReadRequest) returns (CommonResponse);
+  rpc DeleteMessages (DeleteMessagesRequest) returns (CommonResponse);
+  rpc ClearAllMessages (ClearAllMessagesRequest) returns (CommonResponse);
+  rpc GetMessage (GetMessageRequest) returns (MessageItem);
+
+  // --- 管理端：消息操作 ---
+  rpc SendMessage (SendMessageRequest) returns (SendMessageResponse);
+  rpc RevokeMessage (RevokeMessageRequest) returns (CommonResponse);
+
+  // --- 管理端：分页列出消息与计数 ---
+  rpc ListMessagesAdmin (ListMessagesAdminRequest) returns (ListMessagesAdminResponse);
+  rpc GetMessageStats (GetMessageStatsRequest) returns (GetMessageStatsResponse);
+
+  // --- 管理端：模板 CRUD ---
+  rpc CreateTemplate (CreateTemplateRequest) returns (Template);
+  rpc GetTemplate (GetTemplateRequest) returns (Template);
+  rpc UpdateTemplate (UpdateTemplateRequest) returns (Template);
+  rpc ListTemplates (ListTemplatesRequest) returns (ListTemplatesResponse);
+  // 管理端：获取模板详情（与 GetTemplate 等价，遵循命名约定）
+  rpc GetTemplateDetail (GetTemplateDetailRequest) returns (Template);
+  // 获取内置路径信息
+  rpc GetBuiltInPath (GetBuiltInPathRequest) returns (GetBuiltInPathResponse);
+  // 获取所有内置路径信息列表
+  rpc GetAllBuiltInPaths (GetAllBuiltInPathsRequest) returns (GetAllBuiltInPathsResponse);
+}
+
+// --- 数据模型 ---
+enum MessageStatus {
+  UNREAD = 0;
+  READ = 1;
+  DELETED = 2;
+  REVOKED = 3;
+}
+
+enum MsgType {
+  UNKNOWN_TYPE = 0;
+  SYSTEM_NOTICE = 1;
+  EXAM_REMIND = 2;
+  SCORE_REPORT = 3;
+  PAYMENT_NOTICE = 4;
+  OTHER = 5;
+}
+
+enum MsgSource {
+  UNKNOWN_SOURCE = 0;
+  AUTO_SYSTEM = 1;
+  MANUAL_ADMIN = 2;
+}
+
+
+message Template {
+  string path = 1;         // 模板路径，唯一标识
+  string title_tpl = 2;
+  string content_tpl = 3;
+  string description = 4;
+  uint32 version = 5;
+  string created_at = 6;
+  string updated_at = 7;
+  string parameter_schema = 8;
+}
+
+message TemplateSummary {
+  string path = 1;         // 模板路径
+  string description = 2;
+  uint32 version = 3;
+  string created_at = 4;
+  string updated_at = 5;
+}
+
+// 通用简单响应，替代 google.protobuf.Empty
+message CommonResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message GetMessageRequest {
+  string user_id = 1;    // 用户ID [required]
+  string message_id = 2; // 消息ID [required]
+}
+
+// --- 请求与响应详情 ---
+
+message ListMessagesRequest {
+  string user_id = 1; // 用户的ID [required]
+  optional MessageStatus status = 2; // 消息状态 [optional]
+  uint32 limit = 3; // 每页数量 [optional]
+  uint64 last_id = 4; // 上一条消息 of ID,用于分页, 此处对应的是数据表中的自增ID [optional]
+}
+
+message ListMessagesResponse {
+  repeated MessageItem messages = 1;
+  bool has_more = 2;
+}
+
+message DeleteMessagesRequest {
+  string user_id = 1; // 用户ID [required]
+  repeated string message_ids = 2; // 消息ID列表 [required]
+}
+
+message ClearAllMessagesRequest {
+  string user_id = 1; // 用户ID [required]
+}
+
+message SendMessageRequest {
+  repeated string user_ids = 1; // 用户ID列表 [required]
+  string message_id = 2; // 消息ID [required]
+  string template_path = 3; // 模板路径 [required]
+  string payload = 4; // JSON 字符串 [required]
+  MsgType msg_type = 5; // 消息类型 [required]
+  MsgSource msg_source = 6; // 消息来源 [required]
+  string sender_id = 7; // 发送者ID [required]
+  BuiltInMsgPathType builtin_template_path = 8; // 内置模板路径枚举 [optional]
+}
+
+message SendMessageResponse {
+  uint32 count = 1;
+  string status = 2;
+}
+
+message RevokeMessageRequest {
+  string user_id = 1; // 用户ID [required]
+  string message_id = 2; // 消息ID [required]
+  string admin_id = 3; // 管理员ID [required]
+}
+
+message CreateTemplateRequest {
+  string path = 1; // 模板路径 [required]
+  string title_tpl = 2; // 标题模板 [required]
+  string content_tpl = 3; // 正文模板 [required]
+  string description = 4; // 模板描述 [optional]
+  string parameter_schema = 5; // JSON Schema [required]
+}
+
+message GetTemplateRequest {
+  string path = 1; // 模板路径 [required]
+}
+
+message UpdateTemplateRequest {
+  string path = 1; // 模板路径 [required]
+  string title_tpl = 2; // 标题模板 [required]
+  string content_tpl = 3; // 正文模板 [required]
+  string description = 4; // 模板描述 [optional]
+  uint32 current_version = 5; // 当前版本号 [required]
+  string parameter_schema = 6; // JSON Schema [required]
+}
+
+message ListTemplatesRequest {
+  string keyword = 1; // 关键词, 为空返回全部 [optional]
+  uint32 page = 2; // 页码 [optional]
+  uint32 page_size = 3; // 每页数量 [optional]
+}
+
+message ListTemplatesResponse {
+  repeated TemplateSummary templates = 1;
+  uint32 total = 2;
+}
+
+message MarkAsReadRequest {
+  string user_id = 1; // 用户ID [required]
+  repeated string message_ids = 2; // 消息ID列表 [required]
+}
+
+message ListMessagesAdminRequest {
+  optional MessageStatus status = 1; // 消息状态 [optional]
+  uint32 page = 2; // 页码 [optional]
+  uint32 page_size = 3; // 每页数量 [optional]
+}
+
+message MessageItem {
+  uint64 id = 1; // 自增ID, 主键
+  string message_id = 2; // 消息ID
+  string user_id = 3; // 用户ID
+  string template_path = 4; // 模板路径
+  MsgType msg_type = 5;
+  MsgSource msg_source = 6;
+  string sender_id = 7;
+  MessageStatus status = 8; 
+  string created_at = 9;
+  string payload = 10;
+}
+
+message ListMessagesAdminResponse {
+  repeated MessageItem messages = 1;
+  uint32 total = 2;
+}
+
+message GetMessageStatsRequest {}
+
+message GetMessageStatsResponse {
+  map<string, int64> status_counts = 1;
+}
+
+
+message GetTemplateDetailRequest {
+  string path = 1; // 模板路径 [required]
+}
+
+enum BuiltInMsgPathType {
+  UNKNOWN_MSG_PATH = 0;
+  GCREDS_NEW_APPLICATION_AUDIT = 1;     // "/msg/gcreds/new-application-audit"
+  PIPELINE_STAGE_ORDER_CREATED_GPROG = 2; // "/msg/pipeline/stage-order-created/gprog"
+  GPROG_PIPELINE_STARTED = 3;             // "/msg/pipeline/started/gprog"
+  GPROG_PIPELINE_COMPLETED = 4;           // "/msg/pipeline/completed/gprog"
+  GPROG_STAGE_STARTED = 5;                // "/msg/stage/started/gprog"
+  GPROG_STAGE_COMPLETED = 6;              // "/msg/stage/completed/gprog"
+  GPROG_COURSE_STARTED = 7;               // "/msg/course/started/gprog"
+  GPROG_COURSE_COMPLETED = 8;             // "/msg/course/completed/gprog"
+  GMALL_PIPELINE_PAYMENT_PAID = 9;        // "/msg/pipeline/payment-paid/gmall"
+  GMALL_STAGE_PAYMENT_PAID = 10;          // "/msg/stage/payment-paid/gmall"
+  GMALL_RETAKE_PAYMENT_PAID = 11;         // "/msg/retake/payment-paid/gmall"
+  GMALL_UNLOCK_PAYMENT_PAID = 12;         // "/msg/unlock/payment-paid/gmall"
+  GMALL_CREDENTIAL_PAYMENT_PAID = 13;     // "/msg/credential/payment-paid/gmall"
+  GMALL_PAYMENT_FAILED = 14;              // "/msg/payment/failed/gmall"
+  GCREDS_APPLICATION_APPROVED = 15;     // "/msg/gcreds/application-approved"
+  GCREDS_APPLICATION_REJECTED = 16;     // "/msg/gcreds/application-rejected"
+  GCREDS_APPLICATION_REUPLOAD = 17;     // "/msg/gcreds/application-reupload"
+  GMALL_BUNDLE_PURCHASE_PAID = 18;      // "/msg/bundle/payment-paid/gmall"
+  GMBR_MEMBERSHIP_ACTIVATED = 19;       // "/msg/gmbr/membership-activated"
+  GMBR_MEMBERSHIP_RENEWED = 20;         // "/msg/gmbr/membership-renewed"
+  GMBR_MEMBERSHIP_EXPIRING_SOON = 21;   // "/msg/gmbr/membership-expiring-soon"
+  GMBR_MEMBERSHIP_GRACE_PERIOD = 22;    // "/msg/gmbr/membership-grace-period"
+  GMBR_MEMBERSHIP_PAYMENT_RECOVERED = 23; // "/msg/gmbr/membership-payment-recovered"
+  GMBR_MEMBERSHIP_EXPIRED = 24;         // "/msg/gmbr/membership-expired"
+  GMBR_MEMBERSHIP_CANCELLED = 25;       // "/msg/gmbr/membership-cancelled"
+}
+
+message GetBuiltInPathRequest {
+  oneof query {
+    BuiltInMsgPathType path_type = 1;
+    string path = 2;
+  }
+}
+
+message BuiltInPathInfo {
+  BuiltInMsgPathType path_type = 1;
+  string path = 2;
+  bool has_template = 3;
+  string description = 4;
+}
+
+message GetBuiltInPathResponse {
+  BuiltInPathInfo info = 1;
+}
+
+message GetAllBuiltInPathsRequest {}
+
+message GetAllBuiltInPathsResponse {
+  repeated BuiltInPathInfo paths = 1;
+}
+
+
+

@@ -1,0 +1,362 @@
+syntax = "proto3";
+
+package gmail;
+
+option go_package = "cftp/gmail";
+
+service MailService {
+    // 创建邮件 (基于模板)
+    rpc CreateMail (CreateMailRequest) returns (CreateMailResponse);
+    // 创建邮件 (基于原始 HTML / 纯文本)
+    rpc CreateMailRaw (CreateMailRawRequest) returns (CreateMailResponse);
+    // 查询邮件状态
+    rpc GetMailStatus (GetMailStatusRequest) returns (GetMailStatusResponse);
+    // 查询邮件信息
+    rpc GetMail (GetMailRequest) returns (GetMailResponse);
+    // 撤销邮件
+    rpc CancelMail (CancelMailRequest) returns (CancelMailResponse);
+
+    // 管理端：分页列出邮件
+    rpc ListMails (ListMailsRequest) returns (ListMailsResponse);
+    // 管理端：获取邮件各类状态计数
+    rpc GetMailStats (GetMailStatsRequest) returns (GetMailStatsResponse);
+
+    // 创建邮件模板
+    rpc CreateTemplate (CreateTemplateRequest) returns (CreateTemplateResponse);
+    // 更新邮件模板
+    rpc UpdateTemplate (UpdateTemplateRequest) returns (UpdateTemplateResponse);
+    // 查询邮件模板列表
+    rpc GetTemplateList (GetTemplateListRequest) returns (GetTemplateListResponse);
+    // 查询单个邮件模板
+    rpc GetTemplate (GetTemplateRequest) returns (GetTemplateResponse);
+
+    // 获取邮件详细信息
+    rpc GetMailDetail (GetMailDetailRequest) returns (GetMailDetailResponse);
+    // 分页查询模板列表
+    rpc ListTemplates (ListTemplatesRequest) returns (ListTemplatesResponse);
+    // 获取单个邮件模板详细信息
+    rpc GetTemplateDetail (GetTemplateDetailRequest) returns (GetTemplateDetailResponse);
+    // 渲染测试邮件模板
+    rpc RenderTemplate (RenderTemplateRequest) returns (RenderTemplateResponse);
+    // 查询是否存在模板
+    rpc HasTemplate (HasTemplateRequest) returns (HasTemplateResponse);
+    // 获取内置路径信息
+    rpc GetBuiltInPath (GetBuiltInPathRequest) returns (GetBuiltInPathResponse);
+    // 获取所有内置路径信息列表
+    rpc GetAllBuiltInPaths (GetAllBuiltInPathsRequest) returns (GetAllBuiltInPathsResponse);
+}
+
+message Template {
+    string path = 1;                 // 模板路径，唯一标识 [required]
+    string business_unit = 2;        // 所属业务系统 [required]
+    string name = 3;                 // 模板名称 [required]
+    string subject_template = 4;     // 主题模板 [required]
+    string html_body = 5;            // HTML 内容 [required]
+    string plain_body = 6;           // 纯文本内容 [required]
+    string description = 7;          // 描述
+    uint32 version = 8;              // 版本号
+    string created_at = 9;           // 创建时间
+    string updated_at = 10;          // 更新时间
+    string parameter_schema = 11;    // 参数模式定义 JSON Schema [optional]
+}
+
+message CreateTemplateRequest {
+    string path = 1;                 // 模板路径 [required]
+    string business_unit = 2;        // 所属业务系统 [required]
+    string name = 3;                 // 模板名称 [required]
+    string subject_template = 4;     // 主题模板 [required]
+    string html_body = 5;            // HTML 内容 [required]
+    string plain_body = 6;           // 纯文本内容 [required]
+    string description = 7;          // 描述 [optional]
+    string parameter_schema = 8;     // 参数模式定义 JSON Schema [optional]
+}
+
+message CreateTemplateResponse {
+    string path = 1;                 // 模板路径 [required]
+}
+
+message UpdateTemplateRequest {
+    string path = 1;                 // 模板路径 [required]
+    string business_unit = 2;        // 所属业务系统 [required]
+    string name = 3;                 // 模板名称 [required]
+    string subject_template = 4;     // 主题模板 [required]
+    string html_body = 5;            // HTML 内容 [required]
+    string plain_body = 6;           // 纯文本内容 [required]
+    string description = 7;          // 描述 [optional]
+    string parameter_schema = 8;     // 参数模式定义 JSON Schema [optional]
+}
+
+message UpdateTemplateResponse {
+    bool success = 1;                // 是否成功 [required]
+}
+
+message GetTemplateListRequest {
+    string business_unit = 1;        // 业务系统标识 [required]
+}
+
+message GetTemplateListResponse {
+    repeated Template templates = 1; // 模板列表 [required]
+}
+
+message GetTemplateRequest {
+    string path = 1;                 // 模板路径 [required]
+}
+
+message GetTemplateResponse {
+    Template template = 1;           // 模板 [required]
+}
+
+message CreateMailRequest {
+    string mail_id = 1;              // 邮件ID [required]
+    string business_unit = 2;        // 业务系统标识 [required]
+    string from_email = 3;           // 发件人邮箱 [optional]
+    string from_name = 4;            // 发件人姓名 [optional]
+    string to_email = 5;             // 收件人邮箱 [required]
+    string to_name = 6;              // 收件人姓名 [required]
+    string subject = 7;              // 邮件主题 [required]
+    int32  priority = 8;             // 优先级, 数值越小，优先级越高 [optional]
+    string template_path = 9;        // 模板路径，当template_path 不为空时，payload将被解析为json，用于填充模板中的变量 [required]
+    string payload = 10;             // 原始payload [required]
+    string scheduled_at = 13;        // 调度时间 [optional]
+    BuiltInMailPathType builtin_template_path = 14; // 内置模板路径枚举 [optional]
+}
+
+message CreateMailRawRequest {
+    string mail_id = 1;              // 邮件ID [required]
+    string business_unit = 2;        // 业务系统标识 [required]
+    string from_email = 3;           // 发件人邮箱 [optional]
+    string from_name = 4;            // 发件人姓名 [optional]
+    string to_email = 5;             // 收件人邮箱 [required]
+    string to_name = 6;              // 收件人姓名 [required]
+    string subject = 7;              // 邮件主题 [required]
+    int32  priority = 8;             // 优先级, 数值越小，优先级越高 [optional]
+    string html_body = 9;            // HTML 内容 [required]
+    string plain_body = 10;          // 纯文本内容 [optional, 为空则自动从 html 提取]
+    string scheduled_at = 11;        // 调度时间 [optional]
+}
+
+message CreateMailResponse {
+    string status = 1;              // mail 内部状态 (如: "SCHEDULING", "PENDING_SEND", "SENT", "FAILED") [required]
+    string mail_id = 2;             // 返回原mail id 以供确认 [required]
+}
+
+message GetMailRequest {
+    string mail_id = 1;              // 邮件ID [required]
+}
+
+message GetMailResponse {
+    string mail_id = 1;              // 邮件ID，全局唯一，建议使用UUID [required]
+    string business_unit = 2;        // 业务系统标识 [required]
+    string from_email = 3;           // 发件人邮箱 [required]
+    string from_name = 4;            // 发件人姓名 [required]
+    string to_email = 5;             // 收件人邮箱 [required]
+    string to_name = 6;              // 收件人姓名 [required]
+    string subject = 7;              // 邮件主题 [required]
+    int32  priority = 8;             // 优先级, 数值越小，优先级越高 [required]
+    string template_path = 9;        // 模板路径，当template_path 不为空时，payload将被解析为json，用于填充模板中的变量 [optional]
+    string payload = 10;             // 原始payload [optional]
+    string html_body = 11;           // HTML 内容 [optional]
+    string plain_body = 12;          // 纯文本内容 [optional]
+    string status = 13;              // mail 内部状态 (如: "SCHEDULING", "PENDING_SEND", "SENT", "FAILED") [required]
+    string scheduled_at = 14;        // 调度时间 [required]
+    string processed_at = 15;        // 处理时间 [optional]
+    string error_message = 16;       // 错误信息 [optional]
+}
+
+message GetMailStatusRequest {
+    string mail_id = 1;              // 邮件ID [required]
+}
+
+message GetMailStatusResponse {
+    string status = 1;               // mail 内部状态 (如: "SCHEDULING", "PENDING_SEND", "SENT", "FAILED") [required]
+}
+
+message CancelMailRequest {
+    string mail_id = 1;              // 邮件ID [required]
+}
+
+message CancelMailResponse {
+    bool success = 1;                // 是否成功 [required]
+    string message = 2;              // 错误信息 [required]
+}
+
+message ListMailsRequest {
+    optional string status = 1;      // 状态筛选 ("SCHEDULING", "SENT", "FAILED", "CANCELLED") [optional]
+    uint32 page = 2;                 // 页码, 1-based [optional]
+    uint32 page_size = 3;            // 每页数量 [optional]
+}
+
+message MailItem {
+    string mail_id = 1;              // 邮件ID [required]
+    string business_unit = 2;        // 业务系统标识 [required]
+    string from_email = 3;           // 发件人邮箱 [required]
+    string from_name = 4;            // 发件人姓名 [required]
+    string to_email = 5;             // 收件人邮箱 [required]
+    string to_name = 6;              // 收件人姓名 [required]
+    string subject = 7;              // 邮件主题 [required]
+    int32  priority = 8;             // 优先级 [required]
+    string template_path = 9;        // 模板路径 [optional]
+    string status = 10;              // mail 内部状态 [required]
+    string scheduled_at = 11;        // 调度时间 [required]
+    string processed_at = 12;        // 处理时间 [optional]
+    string error_message = 13;       // 错误信息 [optional]
+    string created_at = 14;          // 创建时间 [required]
+    string ses_message_id = 15;      // AWS SES分配的messageId [optional]
+    string provider_type = 16;       // mail provider: smtp / ses [required]
+    string delivery_status = 17;     // delivery outcome [required]
+    string delivery_at = 18;         // delivery outcome time [optional]
+    int32  retry_count = 19;         // 当前重试次数 [required]
+    int32  max_retries = 20;         // 最大重试次数 [required]
+    string updated_at = 21;          // 更新时间 [required]
+}
+
+message ListMailsResponse {
+    repeated MailItem mails = 1;     // 邮件列表
+    uint32 total = 2;                // 总条数
+}
+
+message GetMailStatsRequest {}
+
+message GetMailStatsResponse {
+    map<string, int64> status_counts = 1; // 各状态计数
+}
+
+message MailDetail {
+    // identity & routing (from existing GetMailResponse)
+    string mail_id = 1;
+    string business_unit = 2;
+    string from_email = 3;
+    string from_name = 4;
+    string to_email = 5;
+    string to_name = 6;
+    string subject = 7;
+    int32 priority = 8;
+    string template_path = 9;
+    // content (large fields — detail only)
+    string payload = 10;
+    string html_body = 11;
+    string plain_body = 12;
+    // status & tracking
+    string status = 13;
+    string scheduled_at = 14;
+    string processed_at = 15;
+    string error_message = 16;
+    string provider_type = 17;        // NEW
+    string delivery_status = 18;      // NEW
+    string delivery_detail = 19;      // NEW (large JSON, detail only)
+    string delivery_at = 20;          // NEW
+    string ses_message_id = 21;       // NEW
+    int32 retry_count = 22;           // NEW
+    int32 max_retries = 23;           // NEW
+    int32 version = 24;               // NEW (optimistic lock)
+    string created_at = 25;           // NEW (was missing from GetMailResponse)
+    string updated_at = 26;           // NEW
+}
+
+message GetMailDetailRequest {
+    string mail_id = 1;
+}
+
+message GetMailDetailResponse {
+    MailDetail mail = 1;
+}
+
+message TemplateSummary {
+    string path = 1;
+    string business_unit = 2;
+    string name = 3;
+    string description = 4;
+    uint32 version = 5;
+    string created_at = 6;
+    string updated_at = 7;
+}
+
+message ListTemplatesRequest {
+    optional string business_unit = 1;  // filter by business unit
+    uint32 page = 2;                    // 1-based, default 1
+    uint32 page_size = 3;               // default 20, max 100
+}
+
+message ListTemplatesResponse {
+    repeated TemplateSummary templates = 1;
+    uint32 total = 2;
+}
+
+message GetTemplateDetailRequest {
+    string path = 1;
+}
+
+message GetTemplateDetailResponse {
+    Template template = 1;
+}
+
+message RenderTemplateRequest {
+    string template_path = 1;         // 模板路径 [required]
+    string template_params_json = 2;  // 用于渲染 body (HTML/Plain) 的 JSON 参数 [required]
+    string subject_params_json = 3;   // 用于渲染 subject 的 JSON 参数 [required]
+}
+
+message RenderTemplateResponse {
+    string subject = 1;               // 渲染后的主题
+    string html_body = 2;             // 渲染后的 HTML 正文
+    string plain_body = 3;            // 渲染后的纯文本正文
+}
+
+message HasTemplateRequest {
+    string path = 1;                 // 模板路径 [required]
+}
+
+message HasTemplateResponse {
+    bool exists = 1;                 // 模板是否存在 [required]
+    string matched_path = 2;         // 实际匹配到的模板路径
+}
+
+enum BuiltInMailPathType {
+    UNKNOWN_MAIL_PATH = 0;
+    GCREDS_NEW_APPLICATION_AUDIT = 1; // "/mail/gcreds/new-application-audit"
+    PIPELINE_STAGE_ORDER_CREATED = 2; // "/mail/pipeline/stage-order-created"
+    GPROG_CERTIFICATE_ISSUED = 3;     // "/mail/gprog/certificate-issued"
+    PIPELINE_PAYMENT = 4;             // "/mail/pipeline/pipeline-payment"
+    EXAM_RETAKE = 5;                  // "/mail/pipeline/exam-retake"
+    UNLOCK_PAYMENT = 6;               // "/mail/pipeline/unlock-payment"
+    CREDENTIAL_APPLICATION = 7;       // "/mail/pipeline/credential-application"
+    EXAM_REMINDER_ONE_WEEK = 8;       // "/mail/exam/reminder-one-week"
+    EXAM_REMINDER_ONE_DAY = 9;        // "/mail/exam/reminder-one-day"
+    EXAM_REMINDER_ONE_HOUR = 10;      // "/mail/exam/reminder-one-hour"
+    GCREDS_APPLICATION_APPROVED = 11; // "/mail/gcreds/application-approved"
+    GCREDS_APPLICATION_REJECTED = 12; // "/mail/gcreds/application-rejected"
+    GCREDS_APPLICATION_REUPLOAD = 13; // "/mail/gcreds/application-reupload"
+    GMBR_MEMBERSHIP_ACTIVATED = 14;   // "/mail/gmbr/membership-activated"
+    GMBR_MEMBERSHIP_RENEWED = 15;     // "/mail/gmbr/membership-renewed"
+    GMBR_MEMBERSHIP_EXPIRING_SOON = 16; // "/mail/gmbr/membership-expiring-soon"
+    GMBR_MEMBERSHIP_GRACE_PERIOD = 17; // "/mail/gmbr/membership-grace-period"
+    GMBR_MEMBERSHIP_PAYMENT_RECOVERED = 18; // "/mail/gmbr/membership-payment-recovered"
+    GMBR_MEMBERSHIP_EXPIRED = 19;       // "/mail/gmbr/membership-expired"
+    GMBR_MEMBERSHIP_CANCELLED = 20;     // "/mail/gmbr/membership-cancelled"
+}
+
+message GetBuiltInPathRequest {
+    oneof query {
+        BuiltInMailPathType path_type = 1;
+        string path = 2;
+    }
+}
+
+message BuiltInPathInfo {
+    BuiltInMailPathType path_type = 1;
+    string path = 2;
+    bool has_template = 3;
+    string description = 4;
+}
+
+message GetBuiltInPathResponse {
+    BuiltInPathInfo info = 1;
+}
+
+message GetAllBuiltInPathsRequest {}
+
+message GetAllBuiltInPathsResponse {
+    repeated BuiltInPathInfo paths = 1;
+}
+
+
